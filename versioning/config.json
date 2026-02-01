@@ -1,0 +1,20 @@
+{
+  "versioningDir": ".versioning",
+  "snapshotsDir": ".versioning/snapshots",
+  "gitDir": ".versioning/.git",
+  "watchPaths": [
+    "agents/**",
+    "world/**",
+    "interfaces/**"
+  ],
+  "ignorePatterns": [
+    "node_modules/**",
+    ".git/**",
+    ".versioning/**",
+    "**/*.log",
+    "**/.DS_Store"
+  ],
+  "commitMessageTemplate": "Agent change: {timestamp}\n\nFiles changed: {files}\n\nContext: {context}",
+  "autoCommit": true,
+  "autoCommitInterval": 30000
+}

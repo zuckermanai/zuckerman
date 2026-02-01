@@ -1,0 +1,62 @@
+{
+  "name": "zuckerman",
+  "version": "0.1.0",
+  "description": "AI Personal agent that can adapt in real time to all your needs",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "zuckerman": "./dist/interfaces/cli/index.js"
+  },
+  "packageManager": "pnpm@10.28.2",
+  "scripts": {
+    "build": "tsc -p tsconfig.json && tsc-alias -p tsconfig.json",
+    "dev": "tsx watch src/index.ts",
+    "gateway": "tsx src/interfaces/cli/index.ts gateway",
+    "gateway:watch": "tsx watch src/interfaces/cli/index.ts gateway",
+    "agent": "tsx src/interfaces/cli/index.ts agent",
+    "status": "tsx src/interfaces/cli/index.ts status",
+    "cli": "tsx src/interfaces/cli/index.ts",
+    "lint": "echo 'Linting not configured yet'",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "clean": "rm -rf dist .turbo node_modules",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [
+    "ai",
+    "agent",
+    "assistant"
+  ],
+  "license": "AGPL-3.0",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "dependencies": {
+    "@sinclair/typebox": "^0.34.47",
+    "@slack/bolt": "^4.6.0",
+    "@whiskeysockets/baileys": "^6.7.8",
+    "chokidar": "^5.0.0",
+    "commander": "^12.1.0",
+    "croner": "^9.1.0",
+    "discord.js": "^14.25.1",
+    "dotenv": "^17.2.3",
+    "grammy": "^1.39.3",
+    "node-edge-tts": "^0.4.8",
+    "pino": "^9.5.0",
+    "playwright-core": "^1.58.1",
+    "qrcode-terminal": "^0.12.0",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/dotenv": "^8.2.3",
+    "@types/node": "^22.0.0",
+    "@types/qrcode-terminal": "^0.12.2",
+    "@types/ws": "^8.5.13",
+    "tsc-alias": "^1.8.16",
+    "tsx": "^4.19.2",
+    "turbo": "^2.0.0",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.9"
+  }
+}

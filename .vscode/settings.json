@@ -1,0 +1,4 @@
+{
+  "typescript.preferences.importModuleSpecifier": "non-relative",
+  "typescript.suggest.paths": true
+}

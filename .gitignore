@@ -1,0 +1,12 @@
+node_modules/
+dist/
+*.log
+.env
+.env.local
+.versioning/
+.DS_Store
+.turbo/
+.pnpm-store/
+pnpm-lock.yaml
+.zuckerman/
+.research/
