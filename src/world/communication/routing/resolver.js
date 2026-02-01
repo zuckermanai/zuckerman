@@ -1,0 +1,125 @@
+function normalizeId(id) {
+    if (!id)
+        return null;
+    return id.trim().toLowerCase();
+}
+function matchesChannel(bindingChannel, messageChannel) {
+    if (!bindingChannel)
+        return true;
+    return bindingChannel.toLowerCase() === messageChannel.toLowerCase();
+}
+function matchesAccountId(bindingAccountId, messageAccountId) {
+    if (!bindingAccountId)
+        return true;
+    if (bindingAccountId === "*")
+        return true;
+    if (!messageAccountId)
+        return false;
+    return bindingAccountId.toLowerCase() === messageAccountId.toLowerCase();
+}
+function matchesPeer(bindingPeer, messagePeer) {
+    if (!bindingPeer || !messagePeer)
+        return false;
+    return bindingPeer.kind === messagePeer.kind && normalizeId(bindingPeer.id) === normalizeId(messagePeer.id);
+}
+function matchesGuild(bindingGuildId, messageGuildId) {
+    if (!bindingGuildId || !messageGuildId)
+        return false;
+    return normalizeId(bindingGuildId) === normalizeId(messageGuildId);
+}
+function matchesTeam(bindingTeamId, messageTeamId) {
+    if (!bindingTeamId || !messageTeamId)
+        return false;
+    return normalizeId(bindingTeamId) === normalizeId(messageTeamId);
+}
+function listBindings(config) {
+    return config.routing?.bindings || [];
+}
+function pickFirstExistingAgentId(config, agentId) {
+    const agents = config.agents?.list || [];
+    const exists = agents.some(a => a.id === agentId);
+    if (exists)
+        return agentId;
+    // Fallback to first agent or default
+    const defaultAgent = agents.find(a => a.default) || agents[0];
+    return defaultAgent?.id || agentId;
+}
+function buildSessionKey(params) {
+    const { agentId, channel, accountId, peer } = params;
+    if (peer) {
+        if (peer.kind === "dm") {
+            // Direct messages collapse to main session
+            return `agent:${agentId}:main`;
+        }
+        // Groups/channels get isolated sessions
+        return `agent:${agentId}:${channel}:${peer.kind}:${peer.id}`;
+    }
+    // Default main session
+    return `agent:${agentId}:main`;
+}
+/**
+ * Resolve which agent should handle a message based on routing rules
+ */
+export function resolveAgentRoute(input) {
+    const { config, channel, accountId, peer, guildId, teamId } = input;
+    const bindings = listBindings(config).filter((binding) => {
+        if (!binding || typeof binding !== "object")
+            return false;
+        if (!matchesChannel(binding.match.channel, channel))
+            return false;
+        return matchesAccountId(binding.match.accountId, accountId);
+    });
+    const choose = (agentId, matchedBy) => {
+        const resolvedAgentId = pickFirstExistingAgentId(config, agentId);
+        const sessionKey = buildSessionKey({
+            agentId: resolvedAgentId,
+            channel,
+            accountId,
+            peer,
+        });
+        return {
+            agentId: resolvedAgentId,
+            channel,
+            accountId,
+            sessionKey,
+            matchedBy,
+        };
+    };
+    // 1. Exact peer match (most specific)
+    if (peer) {
+        const peerMatch = bindings.find((b) => matchesPeer(b.match.peer, peer));
+        if (peerMatch)
+            return choose(peerMatch.agentId, "binding.peer");
+    }
+    // 2. Guild match (Discord)
+    if (guildId) {
+        const guildMatch = bindings.find((b) => matchesGuild(b.match.guildId, guildId));
+        if (guildMatch)
+            return choose(guildMatch.agentId, "binding.guild");
+    }
+    // 3. Team match (Slack)
+    if (teamId) {
+        const teamMatch = bindings.find((b) => matchesTeam(b.match.teamId, teamId));
+        if (teamMatch)
+            return choose(teamMatch.agentId, "binding.team");
+    }
+    // 4. Account match
+    if (accountId) {
+        const accountMatch = bindings.find((b) => b.match.accountId && b.match.accountId !== "*" && matchesAccountId(b.match.accountId, accountId));
+        if (accountMatch)
+            return choose(accountMatch.agentId, "binding.account");
+    }
+    // 5. Channel match (any account on that channel)
+    const channelMatch = bindings.find((b) => !b.match.peer && !b.match.accountId);
+    if (channelMatch)
+        return choose(channelMatch.agentId, "binding.channel");
+    // 6. Default agent
+    const agents = config.agents?.list || [];
+    const defaultAgent = agents.find(a => a.default) || agents[0];
+    const defaultAgentId = defaultAgent?.id || "zuckerman";
+    return choose(defaultAgentId, "default");
+}
+// Land resolution in world/land/resolver
+// Re-export for backward compatibility
+export { resolveAgentLandDir as resolveAgentLand } from "@world/land/resolver.js";
+//# sourceMappingURL=resolver.js.map

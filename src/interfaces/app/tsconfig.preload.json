@@ -4,12 +4,12 @@
     "module": "CommonJS",
     "moduleResolution": "node",
     "outDir": "dist/main",
-    "rootDir": "main",
+    "rootDir": "src/main",
     "esModuleInterop": true,
     "skipLibCheck": true,
     "sourceMap": true,
     "strict": true
   },
-  "include": ["main/preload.ts"],
+  "include": ["src/main/preload.ts"],
   "exclude": ["node_modules", "dist"]
 }

@@ -1,18 +1,25 @@
 {
-  "name": "zuckerman-app",
+  "name": "@zuckerman/app",
   "version": "0.1.0",
   "description": "Zuckerman Control Panel - Electron App",
   "main": "dist/main/index.js",
   "type": "module",
   "scripts": {
-    "dev": "concurrently \"npm run dev:vite\" \"npm run dev:electron\"",
+    "dev": "concurrently \"pnpm run dev:vite\" \"pnpm run dev:electron\"",
     "dev:vite": "vite",
-    "dev:electron": "wait-on http://localhost:3000 && tsc && cross-env NODE_ENV=development electron dist/main/index.js",
-    "build": "npm run build:main && npm run build:renderer",
-    "build:main": "tsc -p tsconfig.main.json && tsc -p tsconfig.preload.json && mv dist/main/preload.js dist/main/preload.cjs",
+    "dev:electron": "wait-on http://localhost:3000 && pnpm run build:main && cross-env NODE_ENV=development electron dist/main/index.js",
+    "build": "pnpm run build:main && pnpm run build:renderer",
+    "build:main": "tsc -p tsconfig.main.json && tsc-alias -p tsconfig.main.json && tsc -p tsconfig.preload.json && mv dist/main/preload.js dist/main/preload.cjs",
     "build:renderer": "vite build",
+    "build:all": "pnpm run build:main && pnpm run build:renderer",
+    "dist": "pnpm run build:all && electron-builder",
+    "dist:mac": "pnpm run build:all && electron-builder --mac",
+    "dist:win": "pnpm run build:all && electron-builder --win",
+    "dist:linux": "pnpm run build:all && electron-builder --linux",
     "start": "electron dist/main/index.js",
-    "watch": "tsc --watch"
+    "watch": "tsc --watch",
+    "typecheck": "tsc --noEmit -p tsconfig.main.json",
+    "clean": "rm -rf dist node_modules"
   },
   "dependencies": {
     "@radix-ui/react-avatar": "^1.1.11",
@@ -32,21 +39,25 @@
     "lucide-react": "^0.344.0",
     "qrcode.react": "^4.2.0",
     "react-router-dom": "^7.13.0",
-    "tailwind-merge": "^2.6.1"
+    "tailwind-merge": "^2.6.1",
+    "ws": "^8.18.0"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
     "@types/react": "^18.3.27",
     "@types/react-dom": "^18.3.7",
+    "@types/ws": "^8.5.13",
     "@vitejs/plugin-react": "^5.1.2",
     "autoprefixer": "^10.4.24",
     "concurrently": "^9.2.1",
     "cross-env": "^10.1.0",
-    "electron": "^28.0.0",
+    "electron": "^40.1.0",
+    "electron-builder": "^25.1.8",
     "postcss": "^8.5.6",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "tailwindcss": "^3.4.19",
+    "tsc-alias": "^1.8.16",
     "typescript": "^5.3.3",
     "vite": "^7.3.1",
     "wait-on": "^9.0.3"
@@ -56,5 +67,117 @@
   },
   "keywords": [],
   "author": "",
-  "license": "ISC"
+  "license": "ISC",
+  "build": {
+    "appId": "com.zuckerman.app",
+    "productName": "Zuckerman",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "dist/**/*",
+      "../../dist/**/*",
+      "../../src/**/*",
+      "../../package.json",
+      "!../../src/**/*.test.ts",
+      "!../../src/**/*.test.tsx",
+      "!../../tests/**/*",
+      "!../../node_modules/**/*",
+      "node_modules/**/*"
+    ],
+    "extraFiles": [
+      {
+        "from": "../../dist",
+        "to": "backend/dist",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "../../src",
+        "to": "backend/src",
+        "filter": [
+          "**/*",
+          "!**/*.test.ts",
+          "!**/*.test.tsx"
+        ]
+      },
+      {
+        "from": "../../package.json",
+        "to": "backend/package.json"
+      },
+      {
+        "from": "../../node_modules",
+        "to": "backend/node_modules",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "mac": {
+      "category": "public.app-category.productivity",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ],
+      "icon": "../../company/design/logo.png",
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "../../company/design/logo.png"
+    },
+    "linux": {
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "category": "Utility",
+      "icon": "../../company/design/logo.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    },
+    "dmg": {
+      "contents": [
+        {
+          "x": 130,
+          "y": 220
+        },
+        {
+          "x": 410,
+          "y": 220,
+          "type": "link",
+          "path": "/Applications"
+        }
+      ],
+      "window": {
+        "width": 540,
+        "height": 380
+      }
+    }
+  }
 }

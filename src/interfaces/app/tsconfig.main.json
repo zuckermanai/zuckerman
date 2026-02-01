@@ -1,15 +1,25 @@
 {
-  "extends": "./tsconfig.json",
   "compilerOptions": {
     "target": "ES2022",
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
     "outDir": "dist/main",
-    "rootDir": "main",
+    "baseUrl": "../../..",
+    "paths": {
+      "@world/*": ["src/world/*"],
+      "@agents/*": ["src/agents/*"],
+      "@interfaces/*": ["src/interfaces/*"]
+    },
+    "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
-    "sourceMap": true
+    "sourceMap": true,
+    "noEmit": false,
+    "resolveJsonModule": true,
+    "allowSyntheticDefaultImports": true,
+    "forceConsistentCasingInFileNames": true,
+    "types": ["node"]
   },
-  "include": ["main/**/*.ts"],
-  "exclude": ["node_modules", "dist", "main/preload.ts"]
+  "include": ["src/main/**/*.ts"],
+  "exclude": ["node_modules", "dist", "main/preload.ts", "../../world/**/*", "../../agents/**/*"]
 }

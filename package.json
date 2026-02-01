@@ -9,19 +9,20 @@
   },
   "packageManager": "pnpm@10.28.2",
   "scripts": {
-    "build": "tsc -p tsconfig.json && tsc-alias -p tsconfig.json",
-    "dev": "tsx watch src/index.ts",
+    "build": "turbo run build",
+    "dev": "turbo run dev --filter=@zuckerman/app",
+    "dev:cli": "tsx watch src/index.ts",
     "gateway": "tsx src/interfaces/cli/index.ts gateway",
     "gateway:watch": "tsx watch src/interfaces/cli/index.ts gateway",
     "agent": "tsx src/interfaces/cli/index.ts agent",
     "status": "tsx src/interfaces/cli/index.ts status",
     "cli": "tsx src/interfaces/cli/index.ts",
-    "lint": "echo 'Linting not configured yet'",
-    "test": "vitest run",
+    "lint": "turbo run lint",
+    "test": "turbo run test",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "clean": "rm -rf dist .turbo node_modules",
-    "typecheck": "tsc --noEmit"
+    "clean": "turbo run clean && rm -rf node_modules",
+    "typecheck": "turbo run typecheck"
   },
   "keywords": [
     "ai",

@@ -16,10 +16,10 @@
     "jsx": "react-jsx",
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./*"]
+      "@/*": ["./src/*"]
     },
-    "typeRoots": ["./node_modules/@types", "./types"]
+    "typeRoots": ["./node_modules/@types", "./src/types"]
   },
-  "include": ["main/**/*", "components/**/*", "utils/**/*", "lib/**/*", "pages/**/*", "types/**/*", "styles/**/*", "*.ts", "*.tsx", "*.html"],
+  "include": ["src/**/*", "*.ts", "*.tsx", "*.html"],
   "exclude": ["node_modules", "dist"]
 }
