@@ -1,185 +1,63 @@
 <div align="center">
   <img src="company/design/logo.png" alt="Zuckerman Logo" width="200"/>
+  <h1>Zuckerman [WIP]</h1>
 </div>
 
-# Zuckerman [WIP]
+**A minimalist personal AI agent that starts small, self-edits (including its own code), improves in real-time, and shares improvements with other agents.**
 
-A personal AI agent that starts minimal, self-improves in real-time, and shares its discoveries with other agents.
-
-The whole point of Zuckerman: create a super intelligent agent that can add capabilities to itself — no tons of code required. Agents can offer their improvements in a contribution website where other agents can discover and adopt them, creating a collaborative ecosystem of shared capabilities.
+The vision: Build a truly self-growing intelligence — one that can add tools, rewrite behavior, or extend its core logic by editing its own files — with almost no external code required. Agents propose and publish capabilities to a shared contribution site, letting others discover, adopt, and evolve them further. A collaborative, living ecosystem of personal AIs.
 
 <div align="center">
   <img src="company/design/screenshot.png" alt="Zuckerman Screenshot" width="800"/>
 </div>
 
-## Why
+## Why Zuckerman Exists
 
-Existing solutions like OpenClaw are too complicated for the average person. They require extensive technical knowledge, involve too much setup work, and include massive amounts of code that 99% of users don't need. 
+OpenClaw exploded in popularity (100k+ GitHub stars in weeks) because it delivers real agentic power: it acts across your apps, remembers context, and gets things done. But that power comes with trade-offs — massive codebase, complex setup, steep learning curve, ongoing security discussions (prompt injection, privileged access), and constant updates that can overwhelm regular users.
 
-Zuckerman is different—it's designed to be simple, approachable, and focused on what actually matters. You get a powerful, customizable AI agent without the complexity. Everything you need is in plain text files that the agent can edit by himself, and changes apply instantly—no rebuilds, no restarts, no hassle.
+Zuckerman takes the opposite path:
 
-## Features
+- **Ultra-minimal start** — only the essentials, zero bloat
+- **Full self-edit power** — the agent can modify **its own configuration, tools, prompts, personalities, and even core logic** in plain text files
+- **Instant evolution** — changes hot-reload immediately (no rebuilds, restarts, or dev friction)
+- **Collaborative growth** — agents share useful edits/discoveries so the whole network levels up together
 
-| Feature | Description |
-|---------|-------------|
-| **Minimal Start** | Starts with essential functionality only—no bloat, no unnecessary code |
-| **Self-Improvement** | Agents improve themselves in real-time by editing their own configuration files |
-| **Collaborative Ecosystem** | Agents share discoveries and improvements with other agents through a contribution website |
-| **Hot-Reload** | Changes apply instantly without restarts or rebuilds |
-| **Multi-Channel Support** | Connect via Discord, Slack, Telegram, WhatsApp, or WebChat |
-| **Voice Capabilities** | Text-to-speech and speech-to-text support with multiple providers |
-| **Security** | Built-in authentication, policy resolution, sandboxing, and secret management |
-| **Customizable Agents** | Create multiple agents with unique personalities, tools, and capabilities |
-| **Dual Interfaces** | CLI for power users and Electron app for visual control |
-| **Calendar** | Built-in calendar functionality for scheduling and time management |
-| **Runtime Modification** | Edit agent behavior, tools, and configuration while the agent is running |
+You get an approachable, customizable agent that literally grows by rewriting itself — powerful without the usual headaches.
 
+## Key Features
 
-## Design
+- **Minimal by design** — starts with core essentials only
+- **Real-time self-improvement** — agent edits its own files (config, tools, behavior, code) and reloads instantly
+- **Full runtime modification** — tweak anything while the agent runs
+- **Hot-reload everywhere** — no restarts needed
+- **Collaborative ecosystem** — share and adopt improvements via a contribution website
+- **Multi-channel ready** — Discord, Slack, Telegram, WhatsApp, WebChat + more
+- **Voice support** — TTS/STT with multiple providers
+- **Security foundations** — auth, policy engine, sandboxing (Docker), secret management
+- **Multiple agents** — run several with unique personalities/tools
+- **Dual interfaces** — CLI (power users) + Electron app (visual)
+- **Calendar & scheduling** — built-in time management
 
-A three-layer architecture for AI agents:
+## Architecture (Three Layers)
 
-- **World** (`src/world/`): The operating system—organized into platform layers (communication, execution, runtime, config, voice)
-- **Agents** (`src/agents/`): Agent configurations—each folder contains a complete agent with cognitive modules, tools, and capabilities
-- **Interfaces** (`src/interfaces/`): How you interact—CLI and native app (Electron)
+Everything is plain-text configurable and instantly reloadable.
 
-Everything is configured via text files and applies instantly.
+- **World** (`src/world/`) — the lightweight OS layer  
+  Communication (messengers, gateway), Execution (processes, security), Runtime (agent factory), Config loader, Voice, System utils
+
+- **Agents** (`src/agents/`) — self-contained agent definitions  
+  Each folder = one agent (core modules, tools, sessions, personality)
+
+- **Interfaces** (`src/interfaces/`) — how you talk to it  
+  CLI + Electron/React app (chat, inspector, settings, onboarding)
 
 ## Quick Start
 
 ```bash
-# Install dependencies
+# Clone and install
+git clone https://github.com/zuckermanai/zuckerman.git
+cd zuckerman
 pnpm install
 
-# Run the Electron app
+# Launch the Electron app (recommended for beginners)
 pnpm run dev
-```
-
-This will:
-1. Install all dependencies (including Electron)
-2. Build the main process TypeScript
-3. Start Vite dev server for the renderer
-4. Launch Electron app automatically
-
-## How It Works
-
-1. **Start the agent**—it runs continuously in the background
-2. **Tell the agent to edit itself**—ask it to modify its own configuration files, add tools, or improve capabilities
-3. **Changes apply instantly**—the agent edits files in `src/world/`, `src/agents/`, or `src/interfaces/` and hot-reload applies changes immediately
-4. **Watch it evolve**—the agent improves itself in real-time while continuing to operate
-
-### Creating Custom Agents
-
-- The `src/agents/zuckerman/` folder contains the base agent configuration—keep it unchanged as a reference template
-- Create new agents by copying `src/agents/zuckerman/` to `src/agents/[your-agent-name]/` and customize the configuration files as needed
-- Each agent folder contains its own `core/`, `sessions/`, and `tools/` directories
-
-## What You Can Customize
-
-**World (Operating System):**
-- **Communication**: Gateway (WebSocket), messengers/channels (Discord, Slack, Telegram, WhatsApp, WebChat), routing
-- **Execution**: Process execution, security (auth, policy, sandbox, secrets, context)
-- **Runtime**: Agent factory and management
-- **Config**: Configuration loading and management
-- **Voice**: Text-to-speech and speech-to-text providers
-- **System**: System utilities and services
-
-**Agents Layer:**
-- Create multiple agent configurations in `src/agents/`
-- Each agent has its own core modules (awareness/LLM providers, hear/STT, memory, personality, speak/TTS)
-- Configure tools (browser, canvas, cron, device, terminal, TTS) per agent
-- Customize session management per agent
-- Define personality traits (fear, joy, motivations, traits, values) and behavior patterns per agent
-- Note: Input channels (Discord, Slack, Telegram, WhatsApp, WebChat) are configured in `src/world/communication/messengers/channels/`
-
-**Interfaces Layer:**
-- CLI commands and behavior (`src/interfaces/cli/`)
-- Native Electron app with React UI (`src/interfaces/app/`) - features include chat, gateway inspector, settings, onboarding
-
-## Getting Started
-
-1. Explore `src/world/`, `src/agents/`, and `src/interfaces/` directories
-2. Read README files in each subdirectory
-3. Start editing—changes take effect immediately
-4. Check application logs to see changes applied
-
-### Creating Your First Custom Agent
-
-1. Copy `src/agents/zuckerman/` to `src/agents/[your-agent-name]/`
-2. Customize the agent's `core/` (awareness, hear/STT, memory, personality, speak/TTS), `sessions/`, and `tools/` directories
-3. Keep `src/agents/zuckerman/` unchanged as a reference template
-
-Each directory contains a README explaining its purpose and how to modify it.
-
-## Architecture
-
-```
-src/
-├── world/                    # Operating System (OS layers)
-│   ├── communication/       # Communication stack
-│   │   ├── gateway/         # WebSocket gateway (control plane)
-│   │   │   ├── protocol/    # Protocol schema
-│   │   │   └── server/       # Connection handling, handlers
-│   │   ├── messengers/      # Message channels
-│   │   │   └── channels/    # Discord, Slack, Telegram, WhatsApp, WebChat
-│   │   └── routing/         # Message routing and resolution
-│   ├── execution/           # Execution engine
-│   │   ├── process/         # Process execution
-│   │   └── security/        # Security subsystem
-│   │       ├── auth/        # Authentication
-│   │       ├── policy/       # Policy resolution (command, tool)
-│   │       ├── sandbox/     # Docker sandboxing
-│   │       ├── secrets/     # Secret management
-│   │       └── context/     # Security context
-│   ├── runtime/             # Runtime services
-│   │   └── agents/          # Agent factory and types
-│   ├── config/              # Configuration loader and types
-│   ├── voice/               # Voice capabilities
-│   │   ├── providers/       # TTS providers (Edge, ElevenLabs, OpenAI)
-│   │   ├── text-to-speech.ts
-│   │   └── stt.ts           # Speech-to-text
-│   ├── network/             # Network services
-│   ├── land/                # Land resolver
-│   └── system/              # System utilities
-│
-├── agents/                   # Agent configurations
-│   ├── intelligence/        # Intelligence providers
-│   │   └── providers/       # Model selector service
-│   └── zuckerman/           # Base agent (keep unchanged as reference template)
-│       ├── core/            # Core agent modules
-│       │   ├── awareness/   # LLM providers (Anthropic, OpenAI, OpenRouter, Mock)
-│       │   ├── hear/        # Speech-to-text (STT) transcription
-│       │   ├── memory/      # Memory system (bootstrap, persistence)
-│       │   ├── personality/ # Personality traits (fear, joy, motivations, traits, values)
-│       │   └── speak/       # Text-to-speech providers (Edge, ElevenLabs, OpenAI)
-│       ├── sessions/        # Session management (store, transcript, manager)
-│       └── tools/           # Agent tools
-│           ├── browser/     # Browser automation
-│           ├── canvas/      # Canvas operations
-│           ├── cron/        # Scheduled tasks
-│           ├── device/      # Device access
-│           ├── terminal/    # Terminal execution
-│           ├── text-to-speech/ # TTS integration
-│           └── tts/         # TTS tool
-│
-└── interfaces/              # User interfaces
-    ├── cli/                 # Command-line interface
-    │   ├── commands/        # CLI commands (agents, channels, config, gateway, sessions, status)
-    │   └── utils/           # CLI utilities
-    └── app/                 # Native Electron app
-        ├── components/      # React components
-        ├── features/        # Feature modules (chat, gateway, home, onboarding)
-        ├── hooks/           # React hooks
-        ├── infrastructure/  # Gateway client, storage, types
-        ├── services/        # Application services
-        └── main/            # Electron main process
-```
-
-## License
-
-This project is licensed under the GNU Affero General Public License v3.0 (AGPL-3.0). See [LICENSE](LICENSE) for details.
-
-The AGPL-3.0 license ensures that:
-- Anyone can use, modify, and distribute this software
-- If you use this software in a network service (SaaS), you must release your source code
-- This prevents commercial use without contributing back to the community
