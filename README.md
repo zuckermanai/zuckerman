@@ -34,6 +34,10 @@ Zuckerman is different—it's designed to be simple, approachable, and focused o
 | **Calendar** | Built-in calendar functionality for scheduling and time management |
 | **Runtime Modification** | Edit agent behavior, tools, and configuration while the agent is running |
 
+<div align="center">
+  <img src="company/design/screenshot.png" alt="Zuckerman Screenshot" width="800"/>
+</div>
+
 ## Design
 
 A three-layer architecture for AI agents:
