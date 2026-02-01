@@ -6,7 +6,6 @@ import { ChannelStep } from "./steps/ChannelStep";
 import { AgentStep } from "./steps/AgentStep";
 import { SecurityStep } from "./steps/SecurityStep";
 import { TestStep } from "./steps/TestStep";
-import { CompleteStep } from "./steps/CompleteStep";
 import { TitleBar } from "../../components/layout/title-bar";
 import logo from "@/assets/logo.png";
 
@@ -46,7 +45,7 @@ export interface OnboardingState {
   };
 }
 
-const TOTAL_STEPS = 7;
+const TOTAL_STEPS = 6;
 
 interface OnboardingProps {
   onComplete: (state: OnboardingState) => void;
@@ -114,12 +113,22 @@ export function OnboardingFlow({ onComplete, onSkip, gatewayClient }: Onboarding
   const nextStep = () => {
     if (state.currentStep < TOTAL_STEPS) {
       setState((prev) => ({ ...prev, currentStep: prev.currentStep + 1 }));
+    } else {
+      handleComplete();
     }
   };
 
   const prevStep = () => {
     if (state.currentStep > 1) {
       setState((prev) => ({ ...prev, currentStep: prev.currentStep - 1 }));
+    }
+  };
+
+  const goToStep = (stepId: number) => {
+    // Only allow going to previous steps or the next step if it's already been reached
+    // This maintains the flow while allowing easy "go back"
+    if (stepId < state.currentStep || stepId === state.currentStep) {
+      setState((prev) => ({ ...prev, currentStep: stepId }));
     }
   };
 
@@ -186,8 +195,6 @@ export function OnboardingFlow({ onComplete, onSkip, gatewayClient }: Onboarding
             gatewayClient={gatewayClient}
           />
         );
-      case 7:
-        return <CompleteStep state={state} onComplete={handleComplete} onBack={prevStep} />;
       default:
         return null;
     }
@@ -200,7 +207,6 @@ export function OnboardingFlow({ onComplete, onSkip, gatewayClient }: Onboarding
     { id: 4, title: "Agent" },
     { id: 5, title: "Security" },
     { id: 6, title: "Final Test" },
-    { id: 7, title: "Complete" },
   ];
 
   return (
@@ -239,17 +245,22 @@ export function OnboardingFlow({ onComplete, onSkip, gatewayClient }: Onboarding
               {steps.map((step) => {
                 const isActive = step.id === state.currentStep;
                 const isCompleted = step.id < state.currentStep;
+                const isNavigable = step.id <= state.currentStep;
                 
                 return (
-                  <div
+                  <button
                     key={step.id}
-                    className={`flex items-center gap-3 px-3 py-2 text-sm rounded-md transition-colors ${
+                    onClick={() => goToStep(step.id)}
+                    disabled={!isNavigable}
+                    className={`w-full flex items-center gap-3 px-3 py-2 text-sm rounded-md transition-colors text-left ${
                       isActive 
                         ? "bg-[#1f6feb] text-white font-medium" 
-                        : "text-[#8b949e] hover:bg-[#21262d] hover:text-[#c9d1d9] cursor-default"
+                        : isNavigable
+                        ? "text-[#c9d1d9] hover:bg-[#21262d] cursor-pointer"
+                        : "text-[#8b949e] cursor-not-allowed opacity-50"
                     }`}
                   >
-                    <div className={`flex items-center justify-center w-5 h-5 rounded-full text-[10px] border ${
+                    <div className={`flex items-center justify-center w-5 h-5 rounded-full text-[10px] border shrink-0 ${
                       isActive 
                         ? "border-white bg-white/20" 
                         : isCompleted 
@@ -259,7 +270,7 @@ export function OnboardingFlow({ onComplete, onSkip, gatewayClient }: Onboarding
                       {isCompleted ? "✓" : step.id}
                     </div>
                     {step.title}
-                  </div>
+                  </button>
                 );
               })}
             </nav>
