@@ -5,7 +5,7 @@
 
 **Ultra-minimal personal AI agent: starts small, self-modifies its code live, adapts by writing exactly the code & features you need (beyond just self-looping), improves instantly, and shares improvements with other agents.**
 
-The vision: Build a truly self-growing intelligence — one that can add tools, rewrite behavior, or extend its core logic by editing its own files — with almost no external code required. Agents propose and publish capabilities to a shared contribution site, letting others discover, adopt, and evolve them further. A collaborative, living ecosystem of personal AIs.
+The vision: Build a truly self-growing intelligence — one that can add tools, rewrite behavior, or extend its core logic by editing its own files — with almost no external code required. Agents propose and publish capabilities to a shared contribution site, letting others discover, adopt, and evolve them further.
 
 <div align="center">
   <img src="company/design/screenshot.min.webp" alt="Zuckerman Screenshot" width="800"/>
