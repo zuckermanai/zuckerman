@@ -2,7 +2,16 @@ import type { LLMProvider } from "./types.js";
 import { AnthropicProvider } from "./anthropic.js";
 import { OpenAIProvider } from "./openai.js";
 import { OpenRouterProvider } from "./openrouter.js";
+import { CustomProvider } from "./custom.js";
 import { MockLLMProvider } from "./mock.js";
+
+interface LLMConfig {
+  custom?: {
+    apiKey?: string;
+    baseUrl: string;
+    defaultModel: string;
+  };
+}
 
 export class LLMProviderRegistry {
   private providers = new Map<string, LLMProvider>();
@@ -20,7 +29,7 @@ export class LLMProviderRegistry {
   }
 }
 
-export function createDefaultProviders(useMock = false): LLMProviderRegistry {
+export function createDefaultProviders(useMock = false, config?: LLMConfig): LLMProviderRegistry {
   const registry = new LLMProviderRegistry();
 
   // Use mock provider in test environment or if explicitly requested
@@ -56,6 +65,21 @@ export function createDefaultProviders(useMock = false): LLMProviderRegistry {
       registry.register(new OpenRouterProvider(openrouterKey));
     } catch (err) {
       console.warn("Failed to register OpenRouter provider:", err);
+    }
+  }
+
+  // Register Custom provider from config (config-driven, not env-driven)
+  if (config?.custom?.baseUrl && config?.custom?.defaultModel) {
+    try {
+      registry.register(
+        new CustomProvider(
+          config.custom.apiKey || "",
+          config.custom.baseUrl,
+          config.custom.defaultModel
+        )
+      );
+    } catch (err) {
+      console.warn("Failed to register Custom provider:", err);
     }
   }
 

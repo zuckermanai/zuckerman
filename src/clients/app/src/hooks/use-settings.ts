@@ -9,8 +9,10 @@ export interface SettingsState {
     autoStart: boolean;
   };
   llmProvider: {
-    provider: "anthropic" | "openai" | "openrouter" | "mock" | null;
+    provider: "anthropic" | "openai" | "openrouter" | "mock" | "custom" | null;
     apiKey: string;
+    baseUrl?: string;
+    defaultModel?: string;
     validated: boolean;
     error?: string;
   };
@@ -45,7 +47,7 @@ export interface UseSettingsReturn {
   testConnection: () => Promise<void>;
   validateApiKey: (key: string, provider: string) => boolean;
   testApiKey: () => Promise<void>;
-  handleProviderChange: (provider: "anthropic" | "openai" | "openrouter" | "mock") => void;
+  handleProviderChange: (provider: "anthropic" | "openai" | "openrouter" | "mock" | "custom") => void;
   handleToolToggle: (toolId: string) => Promise<void>;
   handleEnableAllTools: () => Promise<void>;
   handleReset: () => Promise<void>;
@@ -301,10 +303,12 @@ export function useSettings(
     }
   }, [settings.llmProvider.provider, settings.llmProvider.apiKey, validateApiKey, updateSettings]);
 
-  const handleProviderChange = useCallback((provider: "anthropic" | "openai" | "openrouter" | "mock") => {
+  const handleProviderChange = useCallback((provider: "anthropic" | "openai" | "openrouter" | "mock" | "custom") => {
     updateSettings("llmProvider", {
       provider,
       apiKey: "",
+      baseUrl: "",
+      defaultModel: "",
       validated: false,
       error: undefined,
     });

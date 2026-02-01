@@ -18,8 +18,10 @@ export interface OnboardingState {
     error?: string;
   };
   llmProvider: {
-    provider: "anthropic" | "openai" | "openrouter" | "mock" | null;
+    provider: "anthropic" | "openai" | "openrouter" | "mock" | "custom" | null;
     apiKey: string;
+    baseUrl: string;
+    defaultModel: string;
     validated: boolean;
     error?: string;
   };
@@ -64,6 +66,8 @@ export function OnboardingFlow({ onComplete, onSkip, gatewayClient }: Onboarding
     llmProvider: {
       provider: null,
       apiKey: "",
+      baseUrl: "",
+      defaultModel: "",
       validated: false,
     },
     channel: {

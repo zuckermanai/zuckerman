@@ -4,17 +4,21 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Loader2, CheckCircle2, AlertCircle, Eye, EyeOff } from "lucide-react";
+import { CustomProviderFields } from "@/components/CustomProviderFields";
 
 interface LLMViewProps {
   llmProvider: {
-    provider: "anthropic" | "openai" | "openrouter" | "mock" | null;
+    provider: "anthropic" | "openai" | "openrouter" | "mock" | "custom" | null;
     apiKey: string;
+    baseUrl?: string;
+    defaultModel?: string;
     validated: boolean;
     error?: string;
   };
   testingApiKey: boolean;
-  onProviderChange: (provider: "anthropic" | "openai" | "openrouter" | "mock") => void;
+  onProviderChange: (provider: "anthropic" | "openai" | "openrouter" | "mock" | "custom") => void;
   onApiKeyChange: (apiKey: string) => void;
+  onCustomConfigChange?: (config: { baseUrl?: string; defaultModel?: string }) => void;
   onTestApiKey: () => void;
 }
 
@@ -23,6 +27,7 @@ export function LLMView({
   testingApiKey,
   onProviderChange,
   onApiKeyChange,
+  onCustomConfigChange,
   onTestApiKey,
 }: LLMViewProps) {
   const [showApiKey, setShowApiKey] = useState(false);
@@ -40,7 +45,7 @@ export function LLMView({
           <RadioGroup
             value={llmProvider.provider || ""}
             onValueChange={(value) =>
-              onProviderChange(value as "anthropic" | "openai" | "openrouter" | "mock")
+              onProviderChange(value as "anthropic" | "openai" | "openrouter" | "mock" | "custom")
             }
             className="grid grid-cols-1 md:grid-cols-2 gap-4"
           >
@@ -96,6 +101,19 @@ export function LLMView({
                 </div>
               </div>
             </label>
+            <label className={`flex items-start gap-3 p-4 rounded-md border cursor-pointer transition-all ${
+              llmProvider.provider === "custom" 
+                ? "border-primary bg-primary/5" 
+                : "border-border hover:border-muted-foreground bg-card"
+            }`}>
+              <RadioGroupItem value="custom" id="custom" className="mt-1" />
+              <div className="flex-1 space-y-1">
+                <div className="font-semibold text-sm text-foreground">Custom (OpenAI-compatible)</div>
+                <div className="text-xs text-muted-foreground">
+                  Connect to any OpenAI-compatible API endpoint.
+                </div>
+              </div>
+            </label>
           </RadioGroup>
         </div>
       </div>
@@ -109,6 +127,14 @@ export function LLMView({
             </p>
           </div>
           <div className="px-6 py-4 space-y-4">
+            {llmProvider.provider === "custom" && onCustomConfigChange && (
+              <CustomProviderFields
+                baseUrl={llmProvider.baseUrl || ""}
+                defaultModel={llmProvider.defaultModel || ""}
+                onChange={onCustomConfigChange}
+                errors={llmProvider.error ? { general: llmProvider.error } : undefined}
+              />
+            )}
             <div className="space-y-2">
               <Label htmlFor="api-key" className="text-sm font-semibold text-foreground">API Key</Label>
               <div className="relative">
@@ -122,6 +148,8 @@ export function LLMView({
                       ? "sk-ant-..."
                       : llmProvider.provider === "openrouter"
                       ? "sk-or-..."
+                      : llmProvider.provider === "custom"
+                      ? "Enter your API key..."
                       : "sk-..."
                   }
                   className="pr-10"
