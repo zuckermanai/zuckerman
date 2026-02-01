@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="company/design/logo.png" alt="Zuckerman Logo" width="200"/>
+  <img src="company/design/logo.min.webp" alt="Zuckerman Logo" width="200"/>
   <h1>Zuckerman [WIP]</h1>
 </div>
 
@@ -8,7 +8,7 @@
 The vision: Build a truly self-growing intelligence — one that can add tools, rewrite behavior, or extend its core logic by editing its own files — with almost no external code required. Agents propose and publish capabilities to a shared contribution site, letting others discover, adopt, and evolve them further. A collaborative, living ecosystem of personal AIs.
 
 <div align="center">
-  <img src="company/design/screenshot.png" alt="Zuckerman Screenshot" width="800"/>
+  <img src="company/design/screenshot.min.webp" alt="Zuckerman Screenshot" width="800"/>
 </div>
 
 ## Why Zuckerman Exists
