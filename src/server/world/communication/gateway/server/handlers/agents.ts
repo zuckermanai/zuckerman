@@ -159,16 +159,20 @@ export function createAgentHandlers(
         }
 
         // Create streaming callback to emit events
-        const streamCallback = (event: StreamEvent) => {
+        const streamCallback = async (event: StreamEvent) => {
           // Emit event to the client
-          sendEvent(client.socket, {
-            type: "event",
-            event: `agent.stream.${event.type}`,
-            payload: {
-              ...event.data,
-              sessionId: actualSessionId,
-            },
-          });
+          try {
+            sendEvent(client.socket, {
+              type: "event",
+              event: `agent.stream.${event.type}`,
+              payload: {
+                ...event.data,
+                sessionId: actualSessionId,
+              },
+            });
+          } catch (err) {
+            console.error(`[AgentHandler] Error sending stream event:`, err);
+          }
         };
 
         // Pass security context to runtime (use actualSessionId)

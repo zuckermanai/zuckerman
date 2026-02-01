@@ -4,8 +4,10 @@ import type { SecurityContext } from "@server/world/execution/security/types.js"
 export type ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
 
 export interface StreamEvent {
-  type: "token" | "tool.call" | "tool.result" | "thinking" | "done";
+  type: "lifecycle" | "token" | "tool.call" | "tool.result" | "thinking" | "done";
   data: {
+    phase?: "start" | "end" | "error";
+    error?: string;
     token?: string;
     tool?: string;
     toolArgs?: Record<string, unknown>;

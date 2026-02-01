@@ -273,11 +273,52 @@ export function useChat(
         tool?: string;
         toolArgs?: Record<string, unknown>;
         toolResult?: unknown;
+        phase?: "start" | "end" | "error";
+        error?: string;
       };
 
       if (payload.sessionId !== currentSessionIdRef.current) return;
 
-      if (eventType === "token" && payload.token) {
+      if (eventType === "lifecycle") {
+        if (payload.phase === "start") {
+          // Run started - ensure thinking indicator is shown
+          // Don't remove it here, let it stay until first token arrives
+          setMessages((prev) => {
+            const newMessages = [...prev];
+            // Check if thinking indicator already exists
+            const thinkingIndex = newMessages.findIndex((msg) => msg.role === "thinking");
+            if (thinkingIndex === -1) {
+              // Add thinking indicator if it doesn't exist
+              const thinkingMessage: Message = {
+                role: "thinking",
+                content: "",
+                timestamp: Date.now(),
+              };
+              newMessages.push(thinkingMessage);
+            }
+            return newMessages;
+          });
+        } else if (payload.phase === "end") {
+          // Run completed - finalize streaming message
+          streamingMessageRef.current = null;
+        } else if (payload.phase === "error") {
+          // Run error - show error message
+          streamingMessageRef.current = null;
+          setMessages((prev) => {
+            const newMessages = [...prev];
+            const streamingIndex = newMessages.findIndex(
+              (msg) => msg.role === "assistant" && (msg as any).streamingRunId === payload.runId
+            );
+            if (streamingIndex !== -1) {
+              newMessages[streamingIndex] = {
+                ...newMessages[streamingIndex],
+                content: `${newMessages[streamingIndex].content}\n\n❌ Error: ${payload.error || "Unknown error"}`,
+              };
+            }
+            return newMessages;
+          });
+        }
+      } else if (eventType === "token" && payload.token) {
         const token = payload.token;
         setMessages((prev) => {
           const newMessages = [...prev];

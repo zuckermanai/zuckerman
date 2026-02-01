@@ -211,6 +211,31 @@ export async function runAgentInteraction(options: {
         }
       });
 
+      const lifecycleUnsub = client.on("agent.stream.lifecycle", (payload: unknown) => {
+        const data = payload as { 
+          sessionId?: string; 
+          phase?: "start" | "end" | "error";
+          error?: string;
+          tokensUsed?: number;
+        };
+        if (data.sessionId === sessionId) {
+          if (data.phase === "start") {
+            // Run started
+            isStreaming = false;
+          } else if (data.phase === "end") {
+            // Run completed
+            if (data.tokensUsed) {
+              process.stderr.write(`\n[Tokens: ${data.tokensUsed}]\n`);
+            }
+            isStreaming = false;
+          } else if (data.phase === "error") {
+            // Run error
+            process.stderr.write(`\n❌ Error: ${data.error || "Unknown error"}\n`);
+            isStreaming = false;
+          }
+        }
+      });
+
       const doneUnsub = client.on("agent.stream.done", (payload: unknown) => {
         const data = payload as { sessionId?: string; tokensUsed?: number; toolsUsed?: string[] };
         if (data.sessionId === sessionId) {
@@ -223,7 +248,7 @@ export async function runAgentInteraction(options: {
         }
       });
 
-      streamUnsubscribers.push(tokenUnsub, toolCallUnsub, toolResultUnsub, doneUnsub);
+      streamUnsubscribers.push(tokenUnsub, toolCallUnsub, toolResultUnsub, lifecycleUnsub, doneUnsub);
 
       try {
         const response = await client.call({

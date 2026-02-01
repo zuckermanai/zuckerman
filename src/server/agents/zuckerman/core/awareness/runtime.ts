@@ -84,59 +84,73 @@ export class ZuckermanAwareness implements AgentRuntime {
     const { sessionId, message, thinkingLevel = "off", temperature, model, securityContext, stream } = params;
     const runId = randomUUID();
 
-    // Update tool registry session ID for batch tool context
-    this.toolRegistry.setSessionId(sessionId);
-
-    // Get LLM provider and config
-    const config = await loadConfig();
-    const provider = await this.providerService.selectProvider(config);
-
-    // Resolve land directory
-    const landDir = resolveAgentLandDir(config, this.agentId);
-    
-    // Load prompts
-    const prompts = await this.loadPrompts();
-    
-    // Build system prompt (passing landDir to include memory)
-    const systemPrompt = await this.buildSystemPrompt(prompts, landDir);
-
-    // Prepare messages
-    const messages: LLMMessage[] = [
-      { role: "system", content: systemPrompt },
-    ];
-
-    // Load session history
-    const session = this.sessionManager.getSession(sessionId);
-    if (session) {
-      // Add previous messages (limit to last 20 for context window)
-      const history = session.messages.slice(-20);
-      for (const msg of history) {
-        messages.push({
-          role: msg.role === "user" ? "user" : "assistant",
-          content: msg.content,
-        });
-      }
+    // Emit lifecycle start event
+    if (stream) {
+      await stream({
+        type: "lifecycle",
+        data: {
+          phase: "start",
+          runId,
+        },
+      });
     }
 
-    // Add current user message
-    messages.push({ role: "user", content: message });
-
-    // Select model (thinkingLevel is not a model override - it's a separate parameter)
-    const selectedModel = model || selectModel(provider, config);
-
-    // Prepare tools for LLM
-    const llmTools: LLMTool[] = this.toolRegistry.list().map(t => ({
-      type: "function" as const,
-      function: t.definition
-    }));
-
-    // Run LLM
     try {
-      const result = await provider.call({
+      // Update tool registry session ID for batch tool context
+      this.toolRegistry.setSessionId(sessionId);
+
+      // Get LLM provider and config
+      const config = await loadConfig();
+      const provider = await this.providerService.selectProvider(config);
+
+      // Resolve land directory
+      const landDir = resolveAgentLandDir(config, this.agentId);
+      
+      // Load prompts
+      const prompts = await this.loadPrompts();
+      
+      // Build system prompt (passing landDir to include memory)
+      const systemPrompt = await this.buildSystemPrompt(prompts, landDir);
+
+      // Prepare messages
+      const messages: LLMMessage[] = [
+        { role: "system", content: systemPrompt },
+      ];
+
+      // Load session history
+      const session = this.sessionManager.getSession(sessionId);
+      if (session) {
+        // Add previous messages (limit to last 20 for context window)
+        const history = session.messages.slice(-20);
+        for (const msg of history) {
+          messages.push({
+            role: msg.role === "user" ? "user" : "assistant",
+            content: msg.content,
+          });
+        }
+      }
+
+      // Add current user message
+      messages.push({ role: "user", content: message });
+
+      // Select model (thinkingLevel is not a model override - it's a separate parameter)
+      const selectedModel = model || selectModel(provider, config);
+
+      // Prepare tools for LLM
+      const llmTools: LLMTool[] = this.toolRegistry.list().map(t => ({
+        type: "function" as const,
+        function: t.definition
+      }));
+
+      // Run LLM with streaming support
+      const result = await this.callLLMWithStreaming({
+        provider,
         messages,
         model: selectedModel,
         temperature,
         tools: llmTools,
+        stream,
+        runId,
       });
 
       // Handle tool calls if any
@@ -154,15 +168,146 @@ export class ZuckermanAwareness implements AgentRuntime {
         });
       }
 
+      // Emit lifecycle end event
+      if (stream) {
+        await stream({
+          type: "lifecycle",
+          data: {
+            phase: "end",
+            runId,
+            tokensUsed: result.tokensUsed?.total,
+          },
+        });
+      }
+
       return {
         runId,
         response: result.content,
         tokensUsed: result.tokensUsed?.total,
       };
     } catch (err) {
+      // Emit lifecycle error event
+      if (stream) {
+        await stream({
+          type: "lifecycle",
+          data: {
+            phase: "error",
+            error: err instanceof Error ? err.message : String(err),
+            runId,
+          },
+        });
+      }
       console.error(`[ZuckermanRuntime] Error in run:`, err);
       throw err;
     }
+  }
+
+  /**
+   * Call LLM with streaming support when stream callback is provided
+   */
+  private async callLLMWithStreaming(params: {
+    provider: any;
+    messages: LLMMessage[];
+    model?: string;
+    temperature?: number;
+    tools: LLMTool[];
+    stream?: StreamCallback;
+    runId: string;
+  }): Promise<{ content: string; toolCalls?: any[]; tokensUsed?: { total: number } }> {
+    const { provider, messages, model, temperature, tools, stream, runId } = params;
+
+    // Try streaming first if requested and provider supports it
+    if (stream && provider.stream) {
+      let accumulatedContent = "";
+      let streamingSucceeded = false;
+      
+      try {
+        // For now, only use pure streaming when no tools are available
+        // Most providers don't support streaming with tools properly
+        // TODO: Enhance providers to support streaming with tool calls
+        if (tools.length === 0) {
+          // Pure streaming - no tools needed
+          for await (const token of provider.stream({
+            messages,
+            model,
+            temperature,
+            tools: [],
+          })) {
+            accumulatedContent += token;
+            streamingSucceeded = true;
+            await stream({
+              type: "token",
+              data: {
+                token,
+                runId,
+              },
+            });
+          }
+
+          return {
+            content: accumulatedContent,
+            tokensUsed: undefined, // Streaming doesn't provide token counts
+          };
+        }
+      } catch (err) {
+        // If streaming fails, fall back to non-streaming
+        if (streamingSucceeded) {
+          // Partial stream succeeded, but error occurred - still return what we have
+          console.warn(`[ZuckermanRuntime] Streaming error, but partial content received:`, err);
+          return {
+            content: accumulatedContent,
+            tokensUsed: undefined,
+          };
+        }
+        console.warn(`[ZuckermanRuntime] Streaming failed, falling back to non-streaming:`, err);
+      }
+    }
+
+
+    // Non-streaming path:
+    // - When streaming failed or not supported
+    // - When streaming not requested
+    const result = await provider.call({
+      messages,
+      model,
+      temperature,
+      tools,
+    });
+
+    // If streaming was requested but we used non-streaming (due to tools or failure),
+    // emit the complete response as token events with delays to simulate streaming
+    if (stream && result.content) {
+      // Emit as chunks with small delays to simulate streaming for better UX
+      const chunkSize = 5; // Very small chunks for smoother appearance
+      const content = result.content;
+      const totalChunks = Math.ceil(content.length / chunkSize);
+      
+      for (let i = 0; i < content.length; i += chunkSize) {
+        const chunk = content.slice(i, i + chunkSize);
+        try {
+          await stream({
+            type: "token",
+            data: {
+              token: chunk,
+              runId,
+            },
+          });
+          // Progressive delay: faster at start, slower as we go (for better UX)
+          // First chunks appear quickly, later chunks have more delay
+          const delay = i < content.length / 2 ? 15 : 25;
+          await new Promise(resolve => setTimeout(resolve, delay));
+        } catch (err) {
+          // If stream callback fails, log but continue
+          console.warn(`[ZuckermanRuntime] Stream callback error:`, err);
+        }
+      }
+    }
+
+    return {
+      content: result.content,
+      toolCalls: result.toolCalls,
+      tokensUsed: result.tokensUsed,
+    };
   }
 
   /**
@@ -337,11 +482,14 @@ export class ZuckermanAwareness implements AgentRuntime {
     const config = await loadConfig();
     const provider = await this.providerService.selectProvider(config);
     
-    const result = await provider.call({
+    const result = await this.callLLMWithStreaming({
+      provider,
       messages,
       model,
       temperature,
       tools: llmTools,
+      stream,
+      runId,
     });
 
     // Handle nested tool calls (recursive)
@@ -356,6 +504,18 @@ export class ZuckermanAwareness implements AgentRuntime {
         model,
         temperature,
         llmTools,
+      });
+    }
+
+    // Emit lifecycle end event
+    if (stream) {
+      await stream({
+        type: "lifecycle",
+        data: {
+          phase: "end",
+          runId,
+          tokensUsed: result.tokensUsed?.total,
+        },
       });
     }
 
