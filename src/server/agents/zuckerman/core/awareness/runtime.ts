@@ -1,6 +1,4 @@
 import { randomUUID } from "node:crypto";
-import { join, dirname } from "node:path";
-import { fileURLToPath } from "node:url";
 import type { AgentRuntime, AgentRunParams, AgentRunResult, StreamCallback } from "@server/world/runtime/agents/types.js";
 import type { LLMMessage, LLMTool } from "@server/agents/zuckerman/core/awareness/providers/types.js";
 import type { SessionId } from "@server/agents/zuckerman/sessions/types.js";
@@ -10,6 +8,7 @@ import { ZuckermanToolRegistry } from "@server/agents/zuckerman/tools/registry.j
 import { LLMProviderService } from "@server/agents/zuckerman/core/awareness/providers/service/selector.js";
 import { selectModel } from "@server/agents/zuckerman/core/awareness/providers/service/model-selector.js";
 import { PromptLoader, type LoadedPrompts } from "@server/agents/zuckerman/core/memory/loader.js";
+import { agentDiscovery } from "@server/agents/discovery.js";
 import {
   resolveAgentLandDir,
 } from "@server/world/land/resolver.js";
@@ -35,12 +34,12 @@ export class ZuckermanAwareness implements AgentRuntime {
     this.providerService = providerService || new LLMProviderService();
     this.promptLoader = promptLoader || new PromptLoader();
     
-    // Resolve agent directory from current file location using import.meta.url
-    // Current file is in: src/server/agents/zuckerman/core/awareness/runtime.ts
-    // Agent dir is: src/server/agents/zuckerman
-    const currentFile = fileURLToPath(import.meta.url);
-    const currentDir = dirname(currentFile);
-    this.agentDir = join(currentDir, "..", "..", "..");
+    // Get agent directory from discovery service
+    const metadata = agentDiscovery.getMetadata(this.agentId);
+    if (!metadata) {
+      throw new Error(`Agent "${this.agentId}" not found in discovery service`);
+    }
+    this.agentDir = metadata.agentDir;
   }
 
   async loadPrompts(): Promise<LoadedPrompts> {

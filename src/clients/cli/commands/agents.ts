@@ -1,6 +1,6 @@
 import { Command } from "commander";
 import { GatewayClient } from "../gateway-client.js";
-import { ensureGatewayRunning } from "../gateway-utils.js";
+import { ensureGatewayRunning, getGatewayServer } from "../gateway-utils.js";
 import { runAgentInteraction } from "../agent-command.js";
 import { outputJson, shouldOutputJson, parseJsonInput } from "../utils/json-output.js";
 
@@ -256,6 +256,7 @@ export function createAgentsCommand(): Command {
           personality?: string;
           instructions?: string;
           fileCount?: number;
+          additionalFiles?: string[];
         };
 
         if (shouldOutputJson(options)) {
@@ -287,18 +288,36 @@ export function createAgentsCommand(): Command {
             console.log();
           }
           
-          if (result.fileCount !== undefined && result.fileCount > 0) {
-            console.log(`(${result.fileCount} additional prompt file${result.fileCount !== 1 ? "s" : ""})`);
+          if (result.additionalFiles && result.additionalFiles.length > 0) {
+            console.log(`\n=== Additional Prompt Files ===`);
+            result.additionalFiles.forEach((fileName) => {
+              console.log(`- ${fileName}`);
+            });
+          } else if (result.fileCount !== undefined && result.fileCount > 0) {
+            console.log(`\n(${result.fileCount} additional prompt file${result.fileCount !== 1 ? "s" : ""})`);
           }
           
-          if (!result.system && !result.behavior && !result.personality && !result.instructions) {
+          if (!result.system && !result.behavior && !result.personality && !result.instructions && (!result.additionalFiles || result.additionalFiles.length === 0)) {
             console.log("No prompts found for this agent.");
           }
         }
 
         client.disconnect();
+        
+        // Cleanup gateway if we started it
+        const server = getGatewayServer();
+        if (server) {
+          await server.close("Prompts command completed");
+        }
       } catch (err) {
         client.disconnect();
+        
+        // Cleanup gateway if we started it
+        const server = getGatewayServer();
+        if (server) {
+          await server.close("Error occurred");
+        }
+        
         console.error("Error:", err instanceof Error ? err.message : "Unknown error");
         process.exit(1);
       }

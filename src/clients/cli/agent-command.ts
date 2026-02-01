@@ -148,135 +148,132 @@ export async function runAgentInteraction(options: {
       rl.prompt();
     });
 
-    const askQuestion = (): void => {
-      rl.prompt();
+    // Set up line handler once (not inside a function)
+    rl.on("line", async (input: string) => {
+      const message = input.trim();
 
-      rl.on("line", async (input: string) => {
-        const message = input.trim();
+      if (!message) {
+        rl.prompt();
+        return;
+      }
 
-        if (!message) {
+      if (message === "exit" || message === "quit") {
+        rl.close();
+        client.disconnect();
+        // Cleanup gateway if we started it
+        const server = getGatewayServer();
+        if (server) {
+          await server.close("Agent session ended");
+        }
+        console.log("\nGoodbye!");
+        return;
+      }
+
+      // Show thinking indicator
+      process.stdout.write("🤔 Thinking...\r");
+
+      // Set up streaming event listeners
+      let streamedContent = "";
+      let isStreaming = false;
+      const streamUnsubscribers: Array<() => void> = [];
+
+      const tokenUnsub = client.on("agent.stream.token", (payload: unknown) => {
+        const data = payload as { token?: string; sessionId?: string };
+        if (data.token && data.sessionId === sessionId) {
+          if (!isStreaming) {
+            // Clear thinking indicator and start streaming
+            process.stdout.write(" ".repeat(20) + "\r");
+            isStreaming = true;
+          }
+          streamedContent += data.token;
+          process.stdout.write(data.token);
+        }
+      });
+
+      const toolCallUnsub = client.on("agent.stream.tool.call", (payload: unknown) => {
+        const data = payload as { tool?: string; toolArgs?: Record<string, unknown>; sessionId?: string };
+        if (data.tool && data.sessionId === sessionId) {
+          if (!isStreaming) {
+            process.stdout.write(" ".repeat(20) + "\r");
+            isStreaming = true;
+          }
+          process.stdout.write(`\n🔧 Calling tool: ${data.tool}\n`);
+        }
+      });
+
+      const toolResultUnsub = client.on("agent.stream.tool.result", (payload: unknown) => {
+        const data = payload as { tool?: string; toolResult?: unknown; sessionId?: string };
+        if (data.tool && data.sessionId === sessionId) {
+          const resultStr = data.toolResult 
+            ? JSON.stringify(data.toolResult).substring(0, 100)
+            : "completed";
+          process.stdout.write(`🔧 Tool ${data.tool} result: ${resultStr}\n`);
+        }
+      });
+
+      const doneUnsub = client.on("agent.stream.done", (payload: unknown) => {
+        const data = payload as { sessionId?: string; tokensUsed?: number; toolsUsed?: string[] };
+        if (data.sessionId === sessionId) {
+          if (data.tokensUsed) {
+            process.stderr.write(`\n[Tokens: ${data.tokensUsed}]\n`);
+          }
+          if (data.toolsUsed && data.toolsUsed.length > 0) {
+            process.stderr.write(`[Tools used: ${data.toolsUsed.join(", ")}]\n`);
+          }
+        }
+      });
+
+      streamUnsubscribers.push(tokenUnsub, toolCallUnsub, toolResultUnsub, doneUnsub);
+
+      try {
+        const response = await client.call({
+          method: "agent.run",
+          params: {
+            sessionId,
+            message,
+            agentId,
+          },
+          // No timeout - let requests complete naturally
+        });
+
+        // Clean up event listeners
+        streamUnsubscribers.forEach((unsub) => unsub());
+
+        // Clear thinking indicator if not streaming
+        if (!isStreaming) {
+          process.stdout.write(" ".repeat(20) + "\r");
+        } else {
+          // Add newline after streaming
+          process.stdout.write("\n");
+        }
+
+        if (!response.ok) {
+          console.error(`\n❌ Error: ${response.error?.message || "Unknown error"}\n`);
           rl.prompt();
           return;
         }
 
-        if (message === "exit" || message === "quit") {
-          rl.close();
-          client.disconnect();
-          // Cleanup gateway if we started it
-          const server = getGatewayServer();
-          if (server) {
-            await server.close("Agent session ended");
+        // If we didn't stream, show the response normally
+        if (!isStreaming) {
+          const result = response.result as {
+            response: string;
+            tokensUsed?: number;
+          };
+
+          console.log(`\n${result.response}\n`);
+          if (result.tokensUsed) {
+            process.stderr.write(`[Tokens: ${result.tokensUsed}]\n`);
           }
-          console.log("\nGoodbye!");
-          return;
         }
+      } catch (err) {
+        // Clean up event listeners on error
+        streamUnsubscribers.forEach((unsub) => unsub());
+        process.stdout.write(" ".repeat(20) + "\r");
+        console.error(`\n❌ Error: ${err instanceof Error ? err.message : "Unknown error"}\n`);
+      }
 
-        // Show thinking indicator
-        process.stdout.write("🤔 Thinking...\r");
-
-        // Set up streaming event listeners
-        let streamedContent = "";
-        let isStreaming = false;
-        const streamUnsubscribers: Array<() => void> = [];
-
-        const tokenUnsub = client.on("agent.stream.token", (payload: unknown) => {
-          const data = payload as { token?: string; sessionId?: string };
-          if (data.token && data.sessionId === sessionId) {
-            if (!isStreaming) {
-              // Clear thinking indicator and start streaming
-              process.stdout.write(" ".repeat(20) + "\r");
-              isStreaming = true;
-            }
-            streamedContent += data.token;
-            process.stdout.write(data.token);
-          }
-        });
-
-        const toolCallUnsub = client.on("agent.stream.tool.call", (payload: unknown) => {
-          const data = payload as { tool?: string; toolArgs?: Record<string, unknown>; sessionId?: string };
-          if (data.tool && data.sessionId === sessionId) {
-            if (!isStreaming) {
-              process.stdout.write(" ".repeat(20) + "\r");
-              isStreaming = true;
-            }
-            process.stdout.write(`\n🔧 Calling tool: ${data.tool}\n`);
-          }
-        });
-
-        const toolResultUnsub = client.on("agent.stream.tool.result", (payload: unknown) => {
-          const data = payload as { tool?: string; toolResult?: unknown; sessionId?: string };
-          if (data.tool && data.sessionId === sessionId) {
-            const resultStr = data.toolResult 
-              ? JSON.stringify(data.toolResult).substring(0, 100)
-              : "completed";
-            process.stdout.write(`🔧 Tool ${data.tool} result: ${resultStr}\n`);
-          }
-        });
-
-        const doneUnsub = client.on("agent.stream.done", (payload: unknown) => {
-          const data = payload as { sessionId?: string; tokensUsed?: number; toolsUsed?: string[] };
-          if (data.sessionId === sessionId) {
-            if (data.tokensUsed) {
-              process.stderr.write(`\n[Tokens: ${data.tokensUsed}]\n`);
-            }
-            if (data.toolsUsed && data.toolsUsed.length > 0) {
-              process.stderr.write(`[Tools used: ${data.toolsUsed.join(", ")}]\n`);
-            }
-          }
-        });
-
-        streamUnsubscribers.push(tokenUnsub, toolCallUnsub, toolResultUnsub, doneUnsub);
-
-        try {
-          const response = await client.call({
-            method: "agent.run",
-            params: {
-              sessionId,
-              message,
-              agentId,
-            },
-            // No timeout - let requests complete naturally
-          });
-
-          // Clean up event listeners
-          streamUnsubscribers.forEach((unsub) => unsub());
-
-          // Clear thinking indicator if not streaming
-          if (!isStreaming) {
-            process.stdout.write(" ".repeat(20) + "\r");
-          } else {
-            // Add newline after streaming
-            process.stdout.write("\n");
-          }
-
-          if (!response.ok) {
-            console.error(`\n❌ Error: ${response.error?.message || "Unknown error"}\n`);
-            rl.prompt();
-            return;
-          }
-
-          // If we didn't stream, show the response normally
-          if (!isStreaming) {
-            const result = response.result as {
-              response: string;
-              tokensUsed?: number;
-            };
-
-            console.log(`\n${result.response}\n`);
-            if (result.tokensUsed) {
-              process.stderr.write(`[Tokens: ${result.tokensUsed}]\n`);
-            }
-          }
-        } catch (err) {
-          // Clean up event listeners on error
-          streamUnsubscribers.forEach((unsub) => unsub());
-          process.stdout.write(" ".repeat(20) + "\r");
-          console.error(`\n❌ Error: ${err instanceof Error ? err.message : "Unknown error"}\n`);
-        }
-
-        rl.prompt();
-      });
-    };
+      rl.prompt();
+    });
 
     // Handle Ctrl+C gracefully
     rl.on("SIGINT", async () => {
@@ -291,7 +288,8 @@ export async function runAgentInteraction(options: {
       process.exit(0);
     });
 
-    askQuestion();
+    // Start the prompt
+    rl.prompt();
   } catch (err) {
     client.disconnect();
     // Cleanup gateway if we started it

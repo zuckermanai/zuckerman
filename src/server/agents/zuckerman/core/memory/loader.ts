@@ -51,8 +51,10 @@ export class PromptLoader {
           prompts[file.key] = content;
           prompts.files.set(file.path, content);
         } catch (err) {
-          console.warn(`Failed to load ${file.path}:`, err);
+          console.warn(`[PromptLoader] Failed to load ${file.path}:`, err);
         }
+      } else {
+        console.warn(`[PromptLoader] File not found: ${file.path} (agentDir: ${agentDir}, bootstrapDir: ${bootstrapDir})`);
       }
     }
 

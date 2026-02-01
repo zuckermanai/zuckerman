@@ -1,6 +1,7 @@
 import type { GatewayRequestHandlers } from "../types.js";
 import { SessionManager } from "@server/agents/zuckerman/sessions/index.js";
 import { AgentRuntimeFactory } from "@server/world/runtime/agents/index.js";
+import { agentDiscovery } from "@server/agents/discovery.js";
 import { loadConfig } from "@server/world/config/index.js";
 import { resolveSecurityContext } from "@server/world/execution/security/context/index.js";
 import { resolveAgentLand } from "@server/world/communication/routing/resolver.js";
@@ -20,6 +21,34 @@ export function createAgentHandlers(
         respond(false, undefined, {
           code: "ERROR",
           message: err instanceof Error ? err.message : "Failed to list agents",
+        });
+      }
+    },
+
+    "agents.discover": async ({ respond, params }) => {
+      const agentId = params?.agentId as string | undefined;
+      
+      try {
+        if (agentId) {
+          // Get metadata for specific agent
+          const metadata = agentDiscovery.getMetadata(agentId);
+          if (!metadata) {
+            respond(false, undefined, {
+              code: "AGENT_NOT_FOUND",
+              message: `Agent "${agentId}" not found in discovery service`,
+            });
+            return;
+          }
+          respond(true, { agent: metadata });
+        } else {
+          // Get all agent metadata
+          const allMetadata = agentDiscovery.getAllMetadata();
+          respond(true, { agents: allMetadata });
+        }
+      } catch (err) {
+        respond(false, undefined, {
+          code: "ERROR",
+          message: err instanceof Error ? err.message : "Failed to discover agents",
         });
       }
     },
@@ -208,6 +237,11 @@ export function createAgentHandlers(
         if (runtime.clearCache) {
           runtime.clearCache();
         }
+        
+        // Also clear prompt loader cache directly
+        if ((runtime as any).promptLoader?.clearCache) {
+          (runtime as any).promptLoader.clearCache((runtime as any).agentDir);
+        }
 
         const prompts = await runtime.loadPrompts();
         const promptsData = prompts as {
@@ -218,6 +252,33 @@ export function createAgentHandlers(
           files?: Map<string, string>;
         };
 
+        // Get agent metadata for logging
+        const metadata = agentDiscovery.getMetadata(agentId);
+        console.log(`[AgentPrompts] Loaded prompts for "${agentId}":`, {
+          agentDir: metadata?.agentDir,
+          hasSystem: !!promptsData.system,
+          systemLength: promptsData.system?.length || 0,
+          hasBehavior: !!promptsData.behavior,
+          hasPersonality: !!promptsData.personality,
+          hasInstructions: !!promptsData.instructions,
+          fileCount: promptsData.files?.size ?? 0,
+        });
+
+        // Extract file names from paths (just the filename, not full path)
+        const fileNames: string[] = [];
+        if (promptsData.files) {
+          for (const filePath of promptsData.files.keys()) {
+            // Get just the filename from the path
+            const fileName = filePath.split(/[/\\]/).pop() || filePath;
+            // Only include files that aren't already shown (system, behavior, personality, instructions)
+            if (!["system.md", "behavior.md", "personality.md", "README.md"].includes(fileName)) {
+              fileNames.push(fileName);
+            }
+          }
+        }
+
+        // Return prompts - use undefined instead of empty string if not found
+        // This allows the client to distinguish between "not loaded" and "empty content"
         respond(true, {
           agentId,
           system: promptsData.system,
@@ -225,11 +286,40 @@ export function createAgentHandlers(
           personality: promptsData.personality,
           instructions: promptsData.instructions,
           fileCount: promptsData.files?.size ?? 0,
+          additionalFiles: fileNames.sort(),
         });
       } catch (err) {
         respond(false, undefined, {
           code: "ERROR",
           message: err instanceof Error ? err.message : "Failed to load prompts",
+        });
+      }
+    },
+
+    "agent.reload": async ({ respond, params }) => {
+      const agentId = params?.agentId as string | undefined;
+      
+      try {
+        if (agentId) {
+          // Clear cache for specific agent
+          agentFactory.clearCache(agentId);
+          respond(true, { 
+            reloaded: true, 
+            agentId,
+            message: `Cache cleared for agent "${agentId}". Next use will reload from disk.` 
+          });
+        } else {
+          // Clear cache for all agents
+          agentFactory.clearCache();
+          respond(true, { 
+            reloaded: true, 
+            message: "Cache cleared for all agents. Next use will reload from disk." 
+          });
+        }
+      } catch (err) {
+        respond(false, undefined, {
+          code: "ERROR",
+          message: err instanceof Error ? err.message : "Failed to reload agent cache",
         });
       }
     },

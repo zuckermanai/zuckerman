@@ -17,17 +17,14 @@ export function watchForReload(
   });
 
   watcher.on("change", (path) => {
-    console.log(`[Reload] File changed: ${path}`);
     onReload(path);
   });
 
   watcher.on("add", (path) => {
-    console.log(`[Reload] File added: ${path}`);
     onReload(path);
   });
 
   watcher.on("unlink", (path) => {
-    console.log(`[Reload] File removed: ${path}`);
     onReload(path);
   });
 
@@ -41,8 +38,8 @@ export function watchForReload(
 export function getWatchPaths(): string[] {
   const root = cwd();
   return [
-    join(root, "world/**/*"),
-    join(root, "agents/**/*"),
-    join(root, "interfaces/**/*"),
+    join(root, "src/server/**/*"),
+    join(root, "src/clients/**/*"),
+    join(root, "src/shared/**/*"),
   ];
 }

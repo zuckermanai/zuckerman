@@ -27,11 +27,13 @@ import type { UseAppReturn } from "../../../hooks/use-app";
 type AgentTab = "overview" | "prompts" | "tools" | "sessions";
 
 interface AgentPrompts {
+  agentId?: string;
   system?: string;
   behavior?: string;
   personality?: string;
   instructions?: string;
   fileCount?: number;
+  additionalFiles?: string[];
 }
 
 const TOOL_ICONS: Record<string, React.ReactNode> = {
@@ -75,13 +77,17 @@ export function AgentView({ agentId, state, gatewayClient, onClose }: AgentViewP
 
   // Load agent prompts when prompts tab is active
   useEffect(() => {
-    if (activeTab === "prompts" && gatewayClient?.isConnected() && !prompts && !loadingPrompts) {
+    if (activeTab === "prompts" && gatewayClient?.isConnected() && !loadingPrompts) {
+      // Always reload when switching to prompts tab to get fresh data
       loadPrompts();
     }
-  }, [activeTab, gatewayClient, prompts, loadingPrompts]);
+  }, [activeTab, gatewayClient, agentId]);
 
   const loadPrompts = async () => {
-    if (!gatewayClient?.isConnected()) return;
+    if (!gatewayClient?.isConnected()) {
+      setPromptsError("Not connected to gateway");
+      return;
+    }
 
     setLoadingPrompts(true);
     setPromptsError(null);
@@ -89,12 +95,42 @@ export function AgentView({ agentId, state, gatewayClient, onClose }: AgentViewP
     try {
       const response = await gatewayClient.request("agent.prompts", { agentId });
       if (response.ok && response.result) {
-        setPrompts(response.result as AgentPrompts);
+        const result = response.result as AgentPrompts;
+        console.log("[AgentView] Prompts response:", {
+          agentId: result.agentId,
+          hasSystem: !!result.system,
+          systemLength: result.system?.length || 0,
+          hasBehavior: !!result.behavior,
+          hasPersonality: !!result.personality,
+          hasInstructions: !!result.instructions,
+          fileCount: result.fileCount,
+          additionalFiles: result.additionalFiles?.length || 0,
+        });
+        
+        // Check if we actually got any content
+        const hasContent = 
+          (result.system && result.system.trim() !== "") ||
+          (result.behavior && result.behavior.trim() !== "") ||
+          (result.personality && result.personality.trim() !== "") ||
+          (result.instructions && result.instructions.trim() !== "") ||
+          (result.additionalFiles && result.additionalFiles.length > 0);
+        
+        if (hasContent) {
+          setPrompts(result);
+          setPromptsError(null);
+        } else {
+          setPrompts(result);
+          setPromptsError("Prompts loaded but appear to be empty. Check console for details.");
+          console.warn("[AgentView] Prompts are empty. Full response:", result);
+        }
       } else {
         setPromptsError(response.error?.message || "Failed to load prompts");
+        console.error("[AgentView] Failed to load prompts:", response.error);
       }
     } catch (error) {
-      setPromptsError(error instanceof Error ? error.message : "Failed to load prompts");
+      const errorMessage = error instanceof Error ? error.message : "Failed to load prompts";
+      setPromptsError(errorMessage);
+      console.error("[AgentView] Error loading prompts:", error);
     } finally {
       setLoadingPrompts(false);
     }
@@ -314,13 +350,34 @@ export function AgentView({ agentId, state, gatewayClient, onClose }: AgentViewP
                       </div>
                     )}
 
-                    {prompts.fileCount !== undefined && prompts.fileCount > 0 && (
+                    {prompts.additionalFiles && prompts.additionalFiles.length > 0 && (
+                      <div className="border border-border rounded-md bg-card">
+                        <div className="px-6 py-4 border-b border-border">
+                          <h2 className="text-base font-semibold text-foreground">Additional Prompt Files</h2>
+                        </div>
+                        <div className="px-6 py-4">
+                          <ul className="space-y-2">
+                            {prompts.additionalFiles.map((fileName, idx) => (
+                              <li key={idx} className="text-sm text-foreground">
+                                • {fileName}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      </div>
+                    )}
+
+                    {prompts.fileCount !== undefined && prompts.fileCount > 0 && !prompts.additionalFiles && (
                       <div className="text-sm text-muted-foreground">
                         {prompts.fileCount} additional prompt file{prompts.fileCount !== 1 ? "s" : ""}
                       </div>
                     )}
 
-                    {!prompts.system && !prompts.behavior && !prompts.personality && !prompts.instructions && (
+                    {(!prompts.system || prompts.system.trim() === "") && 
+                     (!prompts.behavior || prompts.behavior.trim() === "") && 
+                     (!prompts.personality || prompts.personality.trim() === "") && 
+                     (!prompts.instructions || prompts.instructions.trim() === "") && 
+                     (!prompts.additionalFiles || prompts.additionalFiles.length === 0) && (
                       <div className="text-center py-12 text-muted-foreground">
                         No prompts available for this agent
                       </div>

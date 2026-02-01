@@ -39,13 +39,20 @@ function CollapsibleSection({ title, count, defaultExpanded = true, alwaysExpand
 
   return (
     <div>
-      <button
+      <div
         onClick={toggle}
+        role="button"
+        tabIndex={alwaysExpanded ? -1 : 0}
+        onKeyDown={(e) => {
+          if (!alwaysExpanded && (e.key === 'Enter' || e.key === ' ')) {
+            e.preventDefault();
+            toggle();
+          }
+        }}
         className={`w-full px-3 py-1.5 flex items-center justify-between transition-colors rounded-md group ${
-          alwaysExpanded ? 'cursor-default' : 'hover:bg-accent/50'
+          alwaysExpanded ? 'cursor-default' : 'hover:bg-accent/50 cursor-pointer'
         }`}
         style={{ backgroundColor: 'transparent' }}
-        disabled={alwaysExpanded}
       >
         <div className="flex items-center gap-1.5 flex-1">
           {!alwaysExpanded && (
@@ -69,7 +76,7 @@ function CollapsibleSection({ title, count, defaultExpanded = true, alwaysExpand
             {actionButton}
           </div>
         )}
-      </button>
+      </div>
       {expanded && (
         <div className="mt-0.5">
           {children}

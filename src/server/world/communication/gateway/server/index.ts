@@ -96,7 +96,22 @@ export async function startGatewayServer(
   // Setup hot reload watcher
   const watchPaths = getWatchPaths();
   const reloadWatcher = watchForReload(watchPaths, (path) => {
-    console.log(`[Reload] Detected change in ${path}, reloading...`);
+    // Clear agent runtime cache to force reload on next use
+    // If it's an agent-related file, clear specific agent cache
+    if (path.includes("/agents/")) {
+      const agentMatch = path.match(/\/agents\/([^\/]+)\//);
+      if (agentMatch) {
+        const agentId = agentMatch[1];
+        agentFactory.clearCache(agentId);
+      } else {
+        // If we can't determine which agent, clear all
+        agentFactory.clearCache();
+      }
+    } else {
+      // For other server files, clear all agent caches to be safe
+      agentFactory.clearCache();
+    }
+    
     // Broadcast reload event to all clients
     const event = {
       type: "event" as const,
