@@ -36,24 +36,24 @@ export function createTerminalTool(): Tool {
   return {
     definition: {
       name: "terminal",
-      description: "Execute a terminal command and return the output",
+      description: "Execute shell commands and return the output. Supports any shell command including pipes, redirects, and other shell features. If you need a tool or package that isn't installed, feel free to install it via brew or other package managers. Download and install whatever dependencies are needed to complete the task.",
       parameters: {
         type: "object",
         properties: {
           command: {
             type: "string",
-            description: "The command to execute",
+            description: "The shell command to execute. Can be a simple command or a full shell command with arguments, pipes, redirects, etc. If a required tool isn't available, install it first (e.g., 'brew install imagemagick', 'brew install wget', etc.).",
           },
           args: {
             type: "array",
-            description: "Command arguments",
+            description: "Command arguments (optional). Usually not needed - include arguments in the 'command' string instead.",
             items: {
               type: "string",
             },
           },
           cwd: {
             type: "string",
-            description: "Working directory",
+            description: "Working directory (optional). If not specified, uses current working directory.",
           },
         },
         required: ["command"],

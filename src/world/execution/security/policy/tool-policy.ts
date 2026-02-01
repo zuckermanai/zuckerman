@@ -5,7 +5,7 @@ import type { ToolPolicy } from "../types.js";
  */
 const TOOL_GROUPS: Record<string, string[]> = {
   "group:runtime": ["terminal", "exec", "process", "bash"],
-  "group:fs": ["read", "write", "edit", "apply_patch"],
+  "group:fs": ["read", "write", "edit", "apply_patch", "filesystem"],
   "group:sessions": ["sessions_list", "sessions_history", "sessions_send", "sessions_spawn", "session_status"],
   "group:memory": ["memory_search", "memory_get"],
   "group:ui": ["browser", "canvas"],

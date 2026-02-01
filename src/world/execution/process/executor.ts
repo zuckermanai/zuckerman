@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { accessSync } from "node:fs";
 import type { ProcessOptions, ProcessResult } from "./types.js";
 import { isCommandAllowed, isPathAllowed } from "../security/policy/command-policy.js";
 import { executeInSandbox } from "../security/sandbox/manager.js";
@@ -76,11 +77,40 @@ export async function executeProcess(options: ProcessOptions): Promise<ProcessRe
     const timeout = securityContext?.executionPolicy?.timeout ?? 30000;
     const maxOutput = securityContext?.executionPolicy?.maxOutput ?? 10485760; // 10MB
 
-    const proc = spawn(command, args, {
-      cwd,
-      env: { ...process.env, ...env },
-      shell: true,
-    });
+    // Determine shell to use - prefer user's shell, fallback to common shells
+    let shellPath: string | boolean = true; // Default to true to let Node.js figure it out
+    if (process.platform === "win32") {
+      shellPath = process.env.COMSPEC || "cmd.exe";
+    } else {
+      // On Unix-like systems, try user's shell first, then common defaults
+      if (process.env.SHELL) {
+        shellPath = process.env.SHELL;
+      } else {
+        // Try common shells in order
+        const commonShells = ["/bin/zsh", "/bin/bash", "/bin/sh"];
+        shellPath = commonShells.find(shell => {
+          try {
+            accessSync(shell);
+            return true;
+          } catch {
+            return false;
+          }
+        }) || true;
+      }
+    }
+
+    // If args are provided, use them; otherwise execute the command as a shell command
+    const proc = args && args.length > 0
+      ? spawn(command, args, {
+          cwd,
+          env: { ...process.env, ...env },
+          shell: shellPath,
+        })
+      : spawn(command, [], {
+          cwd,
+          env: { ...process.env, ...env },
+          shell: shellPath,
+        });
 
     let stdout = "";
     let stderr = "";

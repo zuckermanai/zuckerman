@@ -3,6 +3,7 @@ import { createTerminalTool } from "./terminal/index.js";
 import { createBrowserTool } from "./browser/index.js";
 import { createCronTool } from "./cron/index.js";
 import { createDeviceTool } from "./device/index.js";
+import { createFilesystemTool } from "./filesystem/index.js";
 
 export class ZuckermanToolRegistry {
   private tools = new Map<string, Tool>();
@@ -13,6 +14,7 @@ export class ZuckermanToolRegistry {
     this.register(createBrowserTool());
     this.register(createCronTool());
     this.register(createDeviceTool());
+    this.register(createFilesystemTool());
   }
 
   register(tool: Tool): void {
