@@ -23,6 +23,9 @@ export function ChatView({ state, onAction }: ChatViewProps) {
   const [input, setInput] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const lastMessageCountRef = useRef<number>(0);
+  const shouldAutoScrollRef = useRef<boolean>(true); // Track if we should auto-scroll
+  const isUserScrollingRef = useRef<boolean>(false);
 
   const { messages, isSending, sendMessage } = useMessages(
     state.gatewayClient,
@@ -30,12 +33,54 @@ export function ChatView({ state, onAction }: ChatViewProps) {
     state.currentAgentId
   );
 
-  // Auto-scroll to bottom when messages change
+  // Helper function to check if user is at bottom (best practice: exact check)
+  const isAtBottom = (element: HTMLDivElement, threshold = 50): boolean => {
+    const { scrollTop, scrollHeight, clientHeight } = element;
+    return scrollHeight - scrollTop - clientHeight <= threshold;
+  };
+
+  // Track scroll position to detect user scrolling (best practice: only scroll if user is at bottom)
   useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    const scrollElement = scrollRef.current;
+    if (!scrollElement) return;
+
+    const handleScroll = () => {
+      if (!scrollElement) return;
+      
+      // Update auto-scroll preference based on scroll position
+      shouldAutoScrollRef.current = isAtBottom(scrollElement);
+    };
+
+    // Use passive listener for better performance
+    scrollElement.addEventListener("scroll", handleScroll, { passive: true });
+    return () => scrollElement.removeEventListener("scroll", handleScroll);
+  }, []);
+
+  // Auto-scroll to bottom only when appropriate (best practice: conditional scrolling)
+  useEffect(() => {
+    const scrollElement = scrollRef.current;
+    if (!scrollElement) return;
+
+    const currentMessageCount = messages.length;
+    const hasNewMessages = currentMessageCount > lastMessageCountRef.current;
+    const wasAtBottom = shouldAutoScrollRef.current;
+    
+    lastMessageCountRef.current = currentMessageCount;
+
+    // Only auto-scroll if:
+    // 1. New messages were added AND user is already at bottom (preserves scroll position)
+    // 2. OR user is actively sending (always scroll during send)
+    if (hasNewMessages && (isSending || wasAtBottom)) {
+      // Use requestAnimationFrame to ensure DOM is updated before scrolling
+      requestAnimationFrame(() => {
+        if (scrollElement) {
+          scrollElement.scrollTop = scrollElement.scrollHeight;
+          // Update ref after scrolling
+          shouldAutoScrollRef.current = isAtBottom(scrollElement);
+        }
+      });
     }
-  }, [messages]);
+  }, [messages, isSending]);
 
   const handleSend = async () => {
     if (!input.trim() || isSending) return;

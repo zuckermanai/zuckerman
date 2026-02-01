@@ -61,8 +61,37 @@ export function useMessages(
     try {
       const loadedMessages = await messageService.loadMessages(currentSession);
       const deduplicated = messageService.deduplicateMessages(loadedMessages);
-      setMessages(deduplicated);
-      lastMessageCountRef.current = deduplicated.length;
+      
+      // Best practice: Only update state if messages actually changed to prevent scroll jumps
+      setMessages((prev) => {
+        // If count changed, definitely update
+        if (deduplicated.length !== prev.length) {
+          lastMessageCountRef.current = deduplicated.length;
+          return deduplicated;
+        }
+        
+        // If count is same, check if content changed (for streaming/polling updates)
+        // Compare messages by ID/timestamp to detect actual changes
+        if (deduplicated.length > 0 && prev.length > 0) {
+          const prevLast = prev[prev.length - 1];
+          const newLast = deduplicated[deduplicated.length - 1];
+          
+          // If last message changed (timestamp or content), update
+          if (!prevLast || !newLast || 
+              prevLast.timestamp !== newLast.timestamp || 
+              prevLast.content !== newLast.content) {
+            return deduplicated;
+          }
+        }
+        
+        // No changes detected - keep previous state to avoid unnecessary re-renders and scroll jumps
+        return prev;
+      });
+      
+      // Update count ref if we actually updated
+      if (deduplicated.length !== lastMessageCountRef.current) {
+        lastMessageCountRef.current = deduplicated.length;
+      }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       const isSessionNotFound = errorMessage.includes("not found") || errorMessage.includes("Session");
@@ -98,7 +127,8 @@ export function useMessages(
       }
 
       // Don't poll during sending - sendMessage handles its own polling
-      if (isSending) {
+      // Also don't poll if streaming is active (streaming events handle updates)
+      if (isSending || streamingMessageRef.current) {
         return;
       }
 
@@ -106,9 +136,12 @@ export function useMessages(
         const sessionState = await sessionService.getSession(currentSession);
         const currentCount = sessionState.messages?.length || 0;
         
+        // Best practice: Only reload if count changed (new messages added)
+        // This prevents unnecessary updates that cause scroll jumps
         if (currentCount !== lastMessageCountRef.current) {
           await loadMessages();
         }
+        // If count is same, skip reload to preserve scroll position
       } catch (error) {
         // Silently handle polling errors
         const errorMessage = error instanceof Error ? error.message : String(error);
@@ -120,7 +153,7 @@ export function useMessages(
           lastMessageCountRef.current = 0;
         }
       }
-    }, 2000); // Poll every 2 seconds when not sending
+    }, 5000); // Poll every 5 seconds when not sending (reduced frequency)
   }, [gatewayClient, sessionService, loadMessages, isSending, stopPolling]);
 
   // Load messages when session changes (but not if we're currently sending)
