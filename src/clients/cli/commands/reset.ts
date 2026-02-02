@@ -6,7 +6,7 @@ import { createInterface } from "node:readline";
 
 export function createResetCommand(): Command {
   const cmd = new Command("reset")
-    .description("Reset all Zuckerman data (sessions, config, agents, etc.)")
+    .description("Reset all Zuckerman data (conversations, config, agents, etc.)")
     .option("-y, --yes", "Skip confirmation prompt")
     .action(async (options: { yes?: boolean }) => {
       const zuckermanDir = join(homedir(), ".zuckerman");
@@ -21,7 +21,7 @@ export function createResetCommand(): Command {
         console.log("⚠️  WARNING: This will delete ALL Zuckerman data:");
         console.log(`   - ${zuckermanDir}`);
         console.log("   This includes:");
-        console.log("   - All chat history and sessions");
+        console.log("   - All chat history and conversations");
         console.log("   - Agent configurations");
         console.log("   - Memory and transcripts");
         console.log("   - All other stored data");

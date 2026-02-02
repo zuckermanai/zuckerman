@@ -66,11 +66,11 @@ pnpm run dev
 
 - **Split View Terminal Interface**: Left sidebar + main chat area
 - **Real-time WebSocket Connection**: Connects to gateway at ws://127.0.0.1:18789
-- **Session Management**: View, create, switch sessions
+- **Conversation Management**: View, create, switch conversations
 - **Agent Selection**: Switch between available agents
 - **Terminal-Style Chat**: Monospace font, color-coded messages
 - **Status Bar**: Connection status and health monitoring
-- **Keyboard Shortcuts**: Cmd+N (new session), Cmd+K (clear), etc.
+- **Keyboard Shortcuts**: Cmd+N (new conversation), Cmd+K (clear), etc.
 
 ## Architecture
 

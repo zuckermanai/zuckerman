@@ -5,7 +5,7 @@ import { outputJson, shouldOutputJson } from "../utils/json-output.js";
 
 export function createStatusCommand(): Command {
   const cmd = new Command("status")
-    .description("Show overall system status (World, Gateway, Agents, Sessions)")
+    .description("Show overall system status (World, Gateway, Agents, Conversations)")
     .option("--host <host>", "Gateway host", "127.0.0.1")
     .option("--port <port>", "Gateway port", "18789")
     .option("--json", "Output as JSON")

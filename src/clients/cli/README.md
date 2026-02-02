@@ -30,15 +30,15 @@ zuckerman agent --message "Hello, how are you?"
 
 **Options:**
 - `-m, --message <message>` - Send a single message (non-interactive)
-- `-s, --session <session>` - Use a specific session ID
+- `-c, --conversation <conversation>` - Use a specific conversation ID
 - `-a, --agent <agent>` - Agent ID (default: "zuckerman")
 - `--host <host>` - Gateway host (default: "127.0.0.1")
 - `--port <port>` - Gateway port (default: 18789)
 
-**Session Management:**
-- Sessions are automatically created and persisted in `.zuckerman/cli-session.json`
-- Use `--session` to override the default session
-- Sessions maintain conversation history
+**Conversation Management:**
+- Conversations are automatically created and persisted in `.zuckerman/cli-conversation.json`
+- Use `--conversation` to override the default conversation
+- Conversations maintain conversation history
 
 ### `zuckerman status`
 
@@ -65,7 +65,7 @@ zuckerman gateway
 zuckerman status
 ```
 
-**Note:** The `agent` command automatically starts the gateway server if it's not already running. You only need one terminal! The gateway will shut down automatically when you exit the agent session.
+**Note:** The `agent` command automatically starts the gateway server if it's not already running. You only need one terminal! The gateway will shut down automatically when you exit the agent conversation.
 
 ## Architecture
 

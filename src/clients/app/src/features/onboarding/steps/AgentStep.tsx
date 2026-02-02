@@ -80,7 +80,7 @@ export function AgentStep({
           Select Your Agent
         </h1>
         <p className="text-[#8b949e]">
-          Choose which agent configuration to use for your sessions.
+          Choose which agent configuration to use for your conversations.
         </p>
       </div>
 

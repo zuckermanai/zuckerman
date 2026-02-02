@@ -599,7 +599,7 @@ export function useSettings(
             }
           }
         } catch (err) {
-          console.warn("Failed to delete sessions via gateway:", err);
+          console.warn("Failed to delete conversations via gateway:", err);
         }
       }
 

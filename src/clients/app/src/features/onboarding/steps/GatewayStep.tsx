@@ -87,7 +87,7 @@ export function GatewayStep({ state, onUpdate, onNext, onBack, gatewayClient }: 
       <div className="space-y-2">
         <h1 className="text-2xl font-semibold">Connect to Gateway</h1>
         <p className="text-muted-foreground">
-          The gateway is the control plane that manages your agents and sessions.
+          The gateway is the control plane that manages your agents and conversations.
         </p>
       </div>
 

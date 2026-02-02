@@ -34,7 +34,7 @@ import {
 import { GatewayClient } from "../../../core/gateway/client";
 import type { UseAppReturn } from "../../../hooks/use-app";
 
-type AgentTab = "overview" | "prompts" | "tools" | "sessions" | "activities";
+type AgentTab = "overview" | "prompts" | "tools" | "conversations" | "activities";
 
 interface AgentPrompts {
   agentId?: string;

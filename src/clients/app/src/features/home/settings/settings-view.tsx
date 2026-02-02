@@ -318,7 +318,7 @@ export function SettingsView({
                           This will permanently delete all Zuckerman data including:
                         </p>
                         <ul className="text-sm text-muted-foreground list-disc list-inside mb-4 space-y-1">
-                          <li>All chat history and sessions</li>
+                          <li>All chat history and conversations</li>
                           <li>Agent configurations</li>
                           <li>Memory and transcripts</li>
                           <li>All other stored data</li>
@@ -358,7 +358,7 @@ export function SettingsView({
           <div className="text-sm text-muted-foreground">
             <p className="mb-2">This will permanently delete:</p>
             <ul className="list-disc list-inside space-y-1">
-              <li>All chat history and sessions</li>
+              <li>All chat history and conversations</li>
               <li>Agent configurations</li>
               <li>Memory and transcripts</li>
               <li>All other stored data</li>
