@@ -9,8 +9,10 @@ export interface SettingsState {
     autoStart: boolean;
   };
   llmProvider: {
-    provider: "anthropic" | "openai" | "openrouter" | "mock" | null;
+    provider: "anthropic" | "openai" | "openrouter" | "mock" | "custom" | null;
     apiKey: string;
+    baseUrl?: string;
+    defaultModel?: string;
     validated: boolean;
     error?: string;
   };
@@ -45,7 +47,8 @@ export interface UseSettingsReturn {
   testConnection: () => Promise<void>;
   validateApiKey: (key: string, provider: string) => boolean;
   testApiKey: () => Promise<void>;
-  handleProviderChange: (provider: "anthropic" | "openai" | "openrouter" | "mock") => void;
+  handleProviderChange: (provider: "anthropic" | "openai" | "openrouter" | "mock" | "custom") => void;
+  handleCustomConfigChange: (field: "apiKey" | "baseUrl" | "defaultModel", value: string) => void;
   handleToolToggle: (toolId: string) => Promise<void>;
   handleEnableAllTools: () => Promise<void>;
   handleReset: () => Promise<void>;
@@ -100,36 +103,24 @@ export function useSettings(
   });
   const [isLoadingTools, setIsLoadingTools] = useState(false);
 
-  // Load API keys from Electron API on mount
+  // Load full LLM config from config.json on mount
   useEffect(() => {
-    if (window.electronAPI) {
-      window.electronAPI.getApiKeys().then((keys) => {
-        let provider: "anthropic" | "openai" | "openrouter" | "mock" | null = null;
-        let apiKey = "";
-
-        if (keys.anthropic) {
-          provider = "anthropic";
-          apiKey = keys.anthropic;
-        } else if (keys.openai) {
-          provider = "openai";
-          apiKey = keys.openai;
-        } else if (keys.openrouter) {
-          provider = "openrouter";
-          apiKey = keys.openrouter;
-        }
-
-        if (provider) {
+    if (window.electronAPI?.getLLMConfig) {
+      window.electronAPI.getLLMConfig().then((config) => {
+        if (config.provider) {
           setSettings((prev) => ({
             ...prev,
             llmProvider: {
-              provider,
-              apiKey,
+              provider: config.provider,
+              apiKey: config.apiKey || "",
+              baseUrl: config.baseUrl,
+              defaultModel: config.defaultModel,
               validated: true,
             },
           }));
         }
-      }).catch(() => {
-        // Ignore errors
+      }).catch((error) => {
+        console.error("[use-settings] Error loading LLM config:", error);
       });
     }
   }, []);
@@ -200,35 +191,29 @@ export function useSettings(
       onGatewayConfigChange(settings.gateway.host, settings.gateway.port);
     }
 
-    // Save API keys if LLM provider is configured
+    // Save LLM config (provider, apiKey, defaultModel, baseUrl) to config.json
     if (
-      window.electronAPI &&
+      window.electronAPI?.saveLLMConfig &&
       settings.llmProvider.provider &&
-      settings.llmProvider.provider !== "mock" &&
-      settings.llmProvider.apiKey &&
-      settings.llmProvider.apiKey.trim().length > 0
+      settings.llmProvider.provider !== "mock"
     ) {
-      const keys: { anthropic?: string; openai?: string; openrouter?: string } = {};
-      if (settings.llmProvider.provider === "anthropic") {
-        keys.anthropic = settings.llmProvider.apiKey.trim();
-      } else if (settings.llmProvider.provider === "openai") {
-        keys.openai = settings.llmProvider.apiKey.trim();
-      } else if (settings.llmProvider.provider === "openrouter") {
-        keys.openrouter = settings.llmProvider.apiKey.trim();
-      }
-
       try {
-        const result = await window.electronAPI.saveApiKeys(keys);
+        const result = await window.electronAPI.saveLLMConfig({
+          provider: settings.llmProvider.provider,
+          apiKey: settings.llmProvider.apiKey?.trim(),
+          defaultModel: settings.llmProvider.defaultModel,
+          baseUrl: settings.llmProvider.baseUrl,
+        });
         if (!result.success) {
-          alert(`Failed to save API keys: ${result.error || "Unknown error"}`);
+          alert(`Failed to save LLM config: ${result.error || "Unknown error"}`);
         }
       } catch (error) {
-        alert(`Error saving API keys: ${error instanceof Error ? error.message : "Unknown error"}`);
+        alert(`Error saving LLM config: ${error instanceof Error ? error.message : "Unknown error"}`);
       }
     }
 
     setHasChanges(false);
-  }, [settings, hasChanges, onGatewayConfigChange]);
+  }, [settings, hasChanges, onGatewayConfigChange, gatewayClient]);
 
   const testConnection = useCallback(async () => {
     setConnectionStatus("testing");
@@ -261,12 +246,39 @@ export function useSettings(
       return key.startsWith("sk-");
     } else if (provider === "openrouter") {
       return key.startsWith("sk-or-");
+    } else if (provider === "custom") {
+      // API key is optional for custom providers and can be any format
+      return true;
     }
     return false;
   }, []);
 
   const testApiKey = useCallback(async () => {
-    if (!settings.llmProvider.provider || !settings.llmProvider.apiKey) return;
+    if (!settings.llmProvider.provider) return;
+
+    // For custom provider, check required fields (API key is optional)
+    if (settings.llmProvider.provider === "custom") {
+      if (!settings.llmProvider.baseUrl || !settings.llmProvider.defaultModel) {
+        updateSettings("llmProvider", {
+          validated: false,
+          error: "Base URL and default model are required for custom providers",
+        });
+        return;
+      }
+      // Validate API key format if provided (optional field)
+      if (settings.llmProvider.apiKey && !validateApiKey(settings.llmProvider.apiKey, settings.llmProvider.provider)) {
+        updateSettings("llmProvider", {
+          validated: false,
+          error: "Invalid API key format",
+        });
+        return;
+      }
+      updateSettings("llmProvider", { validated: true, error: undefined });
+      return;
+    }
+
+    // For other providers, API key is required
+    if (!settings.llmProvider.apiKey) return;
 
     if (settings.llmProvider.provider === "mock") {
       updateSettings("llmProvider", { validated: true });
@@ -299,14 +311,23 @@ export function useSettings(
     } finally {
       setTestingApiKey(false);
     }
-  }, [settings.llmProvider.provider, settings.llmProvider.apiKey, validateApiKey, updateSettings]);
+  }, [settings.llmProvider.provider, settings.llmProvider.apiKey, settings.llmProvider.baseUrl, settings.llmProvider.defaultModel, validateApiKey, updateSettings]);
 
-  const handleProviderChange = useCallback((provider: "anthropic" | "openai" | "openrouter" | "mock") => {
+  const handleProviderChange = useCallback((provider: "anthropic" | "openai" | "openrouter" | "mock" | "custom") => {
     updateSettings("llmProvider", {
       provider,
       apiKey: "",
+      baseUrl: "",
+      defaultModel: "",
       validated: false,
       error: undefined,
+    });
+  }, [updateSettings]);
+
+  const handleCustomConfigChange = useCallback((field: "apiKey" | "baseUrl" | "defaultModel", value: string) => {
+    updateSettings("llmProvider", {
+      [field]: value,
+      validated: false,
     });
   }, [updateSettings]);
 
@@ -450,6 +471,7 @@ export function useSettings(
     validateApiKey,
     testApiKey,
     handleProviderChange,
+    handleCustomConfigChange,
     handleToolToggle,
     handleEnableAllTools,
     handleReset,

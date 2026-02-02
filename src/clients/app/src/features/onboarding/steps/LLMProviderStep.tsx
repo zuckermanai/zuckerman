@@ -7,6 +7,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Loader2, CheckCircle2, AlertCircle, Eye, EyeOff } from "lucide-react";
 import type { OnboardingState } from "../onboarding-flow";
 import { GatewayClient } from "../../../core/gateway/client";
+import { CustomProviderFields } from "@/components/CustomProviderFields";
 
 interface LLMProviderStepProps {
   state: OnboardingState;
@@ -33,12 +34,15 @@ export function LLMProviderStep({
       return key.startsWith("sk-");
     } else if (provider === "openrouter") {
       return key.startsWith("sk-or-");
+    } else if (provider === "custom") {
+      // API key is optional for custom providers
+      return true;
     }
     return false;
   };
 
   const testApiKey = async () => {
-    if (!state.llmProvider.provider || !state.llmProvider.apiKey) return;
+    if (!state.llmProvider.provider) return;
 
     if (state.llmProvider.provider === "mock") {
       onUpdate({
@@ -46,6 +50,26 @@ export function LLMProviderStep({
       });
       return;
     }
+
+    if (state.llmProvider.provider === "custom") {
+      // For custom provider, validate baseUrl and defaultModel
+      if (!state.llmProvider.baseUrl || !state.llmProvider.defaultModel) {
+        onUpdate({
+          llmProvider: {
+            ...state.llmProvider,
+            validated: false,
+            error: "Base URL and default model are required for custom providers",
+          },
+        });
+        return;
+      }
+      onUpdate({
+        llmProvider: { ...state.llmProvider, validated: true },
+      });
+      return;
+    }
+
+    if (!state.llmProvider.apiKey) return;
 
     if (!validateApiKey(state.llmProvider.apiKey, state.llmProvider.provider)) {
       onUpdate({
@@ -88,16 +112,41 @@ export function LLMProviderStep({
     }
   };
 
-  const handleProviderChange = (provider: "anthropic" | "openai" | "openrouter" | "mock") => {
+  const handleProviderChange = (provider: "anthropic" | "openai" | "openrouter" | "mock" | "custom") => {
     onUpdate({
       llmProvider: {
         provider,
         apiKey: "",
+        baseUrl: "",
+        defaultModel: "",
         validated: false,
         error: undefined,
       },
     });
   };
+
+  // Auto-validate custom provider when required fields are filled
+  useEffect(() => {
+    if (state.llmProvider.provider === "custom") {
+      const hasRequiredFields = state.llmProvider.baseUrl.trim() && state.llmProvider.defaultModel.trim();
+      if (hasRequiredFields && !state.llmProvider.validated) {
+        onUpdate({
+          llmProvider: {
+            ...state.llmProvider,
+            validated: true,
+            error: undefined,
+          },
+        });
+      } else if (!hasRequiredFields && state.llmProvider.validated) {
+        onUpdate({
+          llmProvider: {
+            ...state.llmProvider,
+            validated: false,
+          },
+        });
+      }
+    }
+  }, [state.llmProvider.provider, state.llmProvider.baseUrl, state.llmProvider.defaultModel, state.llmProvider.validated]);
 
   return (
     <div className="max-w-[800px] mx-auto space-y-6">
@@ -121,7 +170,7 @@ export function LLMProviderStep({
           <RadioGroup
             value={state.llmProvider.provider || ""}
             onValueChange={(value) =>
-              handleProviderChange(value as "anthropic" | "openai" | "openrouter" | "mock")
+              handleProviderChange(value as "anthropic" | "openai" | "openrouter" | "mock" | "custom")
             }
             className="grid grid-cols-1 md:grid-cols-2 gap-4"
           >
@@ -165,8 +214,8 @@ export function LLMProviderStep({
               </div>
             </label>
             <label className={`flex items-start gap-3 p-4 rounded-md border cursor-pointer transition-all ${
-              state.llmProvider.provider === "mock" 
-                ? "border-[#1f6feb] bg-[#1f6feb]/5" 
+              state.llmProvider.provider === "mock"
+                ? "border-[#1f6feb] bg-[#1f6feb]/5"
                 : "border-[#30363d] hover:border-[#8b949e] bg-[#161b22]"
             }`}>
               <RadioGroupItem value="mock" id="mock" className="mt-1" />
@@ -177,11 +226,42 @@ export function LLMProviderStep({
                 </div>
               </div>
             </label>
+            <label className={`flex items-start gap-3 p-4 rounded-md border cursor-pointer transition-all ${
+              state.llmProvider.provider === "custom"
+                ? "border-[#1f6feb] bg-[#1f6feb]/5"
+                : "border-[#30363d] hover:border-[#8b949e] bg-[#161b22]"
+            }`}>
+              <RadioGroupItem value="custom" id="custom" className="mt-1" />
+              <div className="flex-1 space-y-1">
+                <div className="font-semibold text-sm text-[#c9d1d9]">Custom (OpenAI-compatible)</div>
+                <div className="text-xs text-[#8b949e]">
+                  Use any OpenAI-compatible API endpoint (Ollama, local LLMs, etc.)
+                </div>
+              </div>
+            </label>
           </RadioGroup>
         </div>
       </div>
 
-      {state.llmProvider.provider && state.llmProvider.provider !== "mock" && (
+      {state.llmProvider.provider === "custom" && (
+        <CustomProviderFields
+          apiKey={state.llmProvider.apiKey}
+          baseUrl={state.llmProvider.baseUrl}
+          defaultModel={state.llmProvider.defaultModel}
+          onChange={(field: "apiKey" | "baseUrl" | "defaultModel", value: string) =>
+            onUpdate({
+              llmProvider: {
+                ...state.llmProvider,
+                [field]: value,
+                validated: false,
+              },
+            })
+          }
+          error={state.llmProvider.error}
+        />
+      )}
+
+      {state.llmProvider.provider && state.llmProvider.provider !== "mock" && state.llmProvider.provider !== "custom" && (
         <div className="border border-[#30363d] rounded-md overflow-hidden bg-[#161b22]">
           <div className="px-6 py-4 border-b border-[#30363d] bg-[#161b22]">
             <h2 className="text-base font-semibold text-[#c9d1d9]">API Key Configuration</h2>

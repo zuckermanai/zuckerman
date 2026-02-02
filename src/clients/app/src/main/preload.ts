@@ -25,6 +25,15 @@ export interface ElectronAPI {
   getApiKeys: () => Promise<{ anthropic?: string; openai?: string; openrouter?: string }>;
   saveApiKeys: (keys: { anthropic?: string; openai?: string; openrouter?: string }) => Promise<{ success: boolean; error?: string }>;
   
+  // Full LLM config (includes defaultModel, baseUrl for custom provider)
+  getLLMConfig: () => Promise<{
+    provider: "anthropic" | "openai" | "openrouter" | "custom" | null;
+    apiKey: string;
+    baseUrl?: string;
+    defaultModel?: string;
+  }>;
+  saveLLMConfig: (config: { provider: "anthropic" | "openai" | "openrouter" | "custom"; apiKey?: string; defaultModel?: string; baseUrl?: string }) => Promise<{ success: boolean; error?: string }>;
+  
   // Calendar events
   getCalendarEvents: () => Promise<{ events: Array<any>; error?: string }>;
   
@@ -62,6 +71,10 @@ contextBridge.exposeInMainWorld("electronAPI", {
   // API Key management
   getApiKeys: () => ipcRenderer.invoke("api-keys:get"),
   saveApiKeys: (keys: { anthropic?: string; openai?: string; openrouter?: string }) => ipcRenderer.invoke("api-keys:save", keys),
+  
+  // Full LLM config (includes defaultModel, baseUrl for custom provider)
+  getLLMConfig: () => ipcRenderer.invoke("llm-config:get"),
+  saveLLMConfig: (config: { provider: "anthropic" | "openai" | "openrouter" | "custom"; apiKey?: string; defaultModel?: string; baseUrl?: string }) => ipcRenderer.invoke("llm-config:save", config),
   
   // Calendar events
   getCalendarEvents: () => ipcRenderer.invoke("calendar:get-events"),

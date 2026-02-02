@@ -1,6 +1,6 @@
 import { ipcMain, app } from "electron";
 import { startGateway, stopGateway, getGatewayStatus, cleanupGateway, getGatewayLogs, clearGatewayLogs } from "@core/gateway/gateway-manager.js";
-import { getApiKeys, saveApiKeys } from "@main/env-manager.js";
+import { getApiKeys, saveApiKeys, getLLMConfig, saveLLMConfig } from "@main/env-manager.js";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import { existsSync, readFileSync, rmSync } from "node:fs";
@@ -31,6 +31,15 @@ export function setupIpcHandlers(): void {
 
   ipcMain.handle("api-keys:save", async (_, keys: { anthropic?: string; openai?: string; openrouter?: string }) => {
     return await saveApiKeys(keys);
+  });
+
+  // Full LLM config management (includes defaultModel, baseUrl for custom provider)
+  ipcMain.handle("llm-config:get", () => {
+    return getLLMConfig();
+  });
+
+  ipcMain.handle("llm-config:save", async (_, config: { provider: "anthropic" | "openai" | "openrouter" | "custom"; apiKey?: string; defaultModel?: string; baseUrl?: string }) => {
+    return await saveLLMConfig(config);
   });
 
   // Gateway management handlers

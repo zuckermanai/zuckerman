@@ -4,4 +4,5 @@ export * from "./anthropic.js";
 export * from "./openai.js";
 export * from "./openrouter.js";
 export * from "./mock.js";
+export * from "./custom.js";
 export * from "./service/index.js";

@@ -25,7 +25,7 @@ export function createWhatsAppTool(): Tool {
     handler: async (params, securityContext) => {
       try {
         // Check if tool is allowed
-        if (securityContext && !isToolAllowed(securityContext, "whatsapp")) {
+        if (securityContext && !isToolAllowed("whatsapp", securityContext.toolPolicy)) {
           return {
             success: false,
             error: "WhatsApp tool is not allowed in this security context",
@@ -60,7 +60,7 @@ export function createWhatsAppTool(): Tool {
         }
 
         // Check if connected
-        if (!whatsappChannel.isConnected()) {
+        if (whatsappChannel.isConnected && !whatsappChannel.isConnected()) {
           return {
             success: false,
             error: "WhatsApp is not connected. Please scan the QR code to connect WhatsApp first.",

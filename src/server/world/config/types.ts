@@ -10,7 +10,7 @@ export interface AgentEntry {
   name?: string;
   land?: string;
   defaultModel?: string;
-  defaultProvider?: "anthropic" | "openai" | "openrouter";
+  defaultProvider?: "anthropic" | "openai" | "openrouter" | "custom";
   temperature?: number;
 }
 
@@ -33,7 +33,7 @@ export interface AgentsConfig {
   defaults?: {
     land?: string;
     defaultModel?: string;
-    defaultProvider?: "anthropic" | "openai" | "openrouter";
+    defaultProvider?: "anthropic" | "openai" | "openrouter" | "custom";
     temperature?: number;
     timeoutSeconds?: number; // Agent runtime timeout (default: 600s)
   };
@@ -131,6 +131,11 @@ export interface LLMConfig {
   };
   openrouter?: {
     apiKey?: string;
+    defaultModel?: string;
+  };
+  custom?: {
+    apiKey?: string;
+    baseUrl?: string;
     defaultModel?: string;
   };
 }

@@ -61,6 +61,7 @@ export function SettingsView({
     testConnection,
     testApiKey,
     handleProviderChange,
+    handleCustomConfigChange,
     handleToolToggle,
     handleEnableAllTools,
     handleReset,
@@ -179,6 +180,7 @@ export function SettingsView({
                     validated: false,
                   })
                 }
+                onCustomConfigChange={handleCustomConfigChange}
                 onTestApiKey={testApiKey}
               />
             )}
