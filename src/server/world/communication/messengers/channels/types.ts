@@ -24,4 +24,5 @@ export interface Channel {
   onMessage(handler: (message: ChannelMessage) => void): void;
   start(): Promise<void>;
   stop(): Promise<void>;
+  isConnected(): boolean;
 }
