@@ -18,7 +18,7 @@ interface LLMViewProps {
   testingApiKey: boolean;
   onProviderChange: (provider: "anthropic" | "openai" | "openrouter" | "mock" | "custom") => void;
   onApiKeyChange: (apiKey: string) => void;
-  onCustomConfigChange?: (config: { baseUrl?: string; defaultModel?: string }) => void;
+  onCustomConfigChange: (field: "apiKey" | "baseUrl" | "defaultModel", value: string) => void;
   onTestApiKey: () => void;
 }
 
@@ -127,12 +127,13 @@ export function LLMView({
             </p>
           </div>
           <div className="px-6 py-4 space-y-4">
-            {llmProvider.provider === "custom" && onCustomConfigChange && (
+            {llmProvider.provider === "custom" && (
               <CustomProviderFields
+                apiKey={llmProvider.apiKey}
                 baseUrl={llmProvider.baseUrl || ""}
                 defaultModel={llmProvider.defaultModel || ""}
                 onChange={onCustomConfigChange}
-                errors={llmProvider.error ? { general: llmProvider.error } : undefined}
+                error={llmProvider.error}
               />
             )}
             <div className="space-y-2">

@@ -26,6 +26,15 @@ export interface ElectronAPI {
   getApiKeys: () => Promise<{ anthropic?: string; openai?: string; openrouter?: string }>;
   saveApiKeys: (keys: { anthropic?: string; openai?: string; openrouter?: string }) => Promise<{ success: boolean; error?: string }>;
   
+  // Full LLM config (includes defaultModel, baseUrl for custom provider)
+  getLLMConfig: () => Promise<{
+    provider: "anthropic" | "openai" | "openrouter" | "custom" | null;
+    apiKey: string;
+    baseUrl?: string;
+    defaultModel?: string;
+  }>;
+  saveLLMConfig: (config: { provider: "anthropic" | "openai" | "openrouter" | "custom"; apiKey?: string; defaultModel?: string; baseUrl?: string }) => Promise<{ success: boolean; error?: string }>;
+  
   // Calendar events
   getCalendarEvents: () => Promise<{ events: Array<any>; error?: string }>;
   

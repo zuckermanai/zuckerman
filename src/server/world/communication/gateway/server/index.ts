@@ -49,6 +49,9 @@ export async function startGatewayServer(
   if (config.llm?.openrouter?.apiKey) {
     process.env.OPENROUTER_API_KEY = config.llm.openrouter.apiKey;
   }
+  if (config.llm?.custom?.apiKey) {
+    process.env.CUSTOM_API_KEY = config.llm.custom.apiKey;
+  }
   
   // Initialize channels
   

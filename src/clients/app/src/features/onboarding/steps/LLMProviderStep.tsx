@@ -125,6 +125,29 @@ export function LLMProviderStep({
     });
   };
 
+  // Auto-validate custom provider when required fields are filled
+  useEffect(() => {
+    if (state.llmProvider.provider === "custom") {
+      const hasRequiredFields = state.llmProvider.baseUrl.trim() && state.llmProvider.defaultModel.trim();
+      if (hasRequiredFields && !state.llmProvider.validated) {
+        onUpdate({
+          llmProvider: {
+            ...state.llmProvider,
+            validated: true,
+            error: undefined,
+          },
+        });
+      } else if (!hasRequiredFields && state.llmProvider.validated) {
+        onUpdate({
+          llmProvider: {
+            ...state.llmProvider,
+            validated: false,
+          },
+        });
+      }
+    }
+  }, [state.llmProvider.provider, state.llmProvider.baseUrl, state.llmProvider.defaultModel, state.llmProvider.validated]);
+
   return (
     <div className="max-w-[800px] mx-auto space-y-6">
       <div className="mb-8">

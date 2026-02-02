@@ -7,17 +7,16 @@ export class CustomProvider implements LLMProvider {
   private defaultModel: string;
 
   constructor(apiKey: string, baseUrl: string, defaultModel: string) {
-    if (!apiKey) {
-      throw new Error("Custom API key is required");
-    }
+    // apiKey is optional - some custom providers (e.g., local LLMs) don't require authentication
     if (!baseUrl) {
       throw new Error("Custom base URL is required");
     }
     if (!defaultModel) {
       throw new Error("Custom default model is required");
     }
-    this.apiKey = apiKey;
-    this.baseUrl = baseUrl;
+    this.apiKey = apiKey || "";
+    // Append /chat/completions if not already present
+    this.baseUrl = baseUrl.endsWith("/chat/completions") ? baseUrl : `${baseUrl.replace(/\/$/, "")}/chat/completions`;
     this.defaultModel = defaultModel;
   }
 

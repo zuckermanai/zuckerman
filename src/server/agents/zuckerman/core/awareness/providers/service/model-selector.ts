@@ -32,6 +32,11 @@ export function selectModel(
     return config.llm?.openrouter?.defaultModel || "deepseek/deepseek-chat";
   }
 
+  if (provider.name === "custom") {
+    // For custom provider, use the configured default model
+    return config.llm?.custom?.defaultModel || "custom-model";
+  }
+
   // Fallback
   return "gpt-4o";
 }

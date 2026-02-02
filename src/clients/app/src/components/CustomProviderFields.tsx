@@ -4,55 +4,31 @@ import { Label } from "@/components/ui/label";
 import { AlertCircle } from "lucide-react";
 
 interface CustomProviderFieldsProps {
-  apiKey?: string;
+  apiKey: string;
   baseUrl: string;
   defaultModel: string;
-  onChange: ((field: "apiKey" | "baseUrl" | "defaultModel", value: string) => void) | ((config: { baseUrl?: string; defaultModel?: string }) => void);
+  onChange: (field: "apiKey" | "baseUrl" | "defaultModel", value: string) => void;
   error?: string;
-  errors?: { general?: string };
 }
 
 export function CustomProviderFields({
-  apiKey = "",
+  apiKey,
   baseUrl,
   defaultModel,
   onChange,
   error,
-  errors,
 }: CustomProviderFieldsProps) {
   const handleBaseUrlChange = (value: string) => {
-    if (typeof onChange === "function") {
-      // Check if it's the object-style callback (from llm-view)
-      const isObjectCallback = onChange.length === 1;
-      if (isObjectCallback) {
-        (onChange as (config: { baseUrl?: string; defaultModel?: string }) => void)({ baseUrl: value });
-      } else {
-        (onChange as (field: "apiKey" | "baseUrl" | "defaultModel", value: string) => void)("baseUrl", value);
-      }
-    }
+    onChange("baseUrl", value);
   };
 
   const handleDefaultModelChange = (value: string) => {
-    if (typeof onChange === "function") {
-      const isObjectCallback = onChange.length === 1;
-      if (isObjectCallback) {
-        (onChange as (config: { baseUrl?: string; defaultModel?: string }) => void)({ defaultModel: value });
-      } else {
-        (onChange as (field: "apiKey" | "baseUrl" | "defaultModel", value: string) => void)("defaultModel", value);
-      }
-    }
+    onChange("defaultModel", value);
   };
 
   const handleApiKeyChange = (value: string) => {
-    if (typeof onChange === "function") {
-      const isObjectCallback = onChange.length === 1;
-      if (!isObjectCallback) {
-        (onChange as (field: "apiKey" | "baseUrl" | "defaultModel", value: string) => void)("apiKey", value);
-      }
-    }
+    onChange("apiKey", value);
   };
-
-  const displayError = error || errors?.general;
 
   return (
     <div className="border border-[#30363d] rounded-md overflow-hidden bg-[#161b22] dark:bg-card dark:border-border">
@@ -116,10 +92,10 @@ export function CustomProviderFields({
           </div>
         )}
 
-        {displayError && (
+        {error && (
           <div className="flex items-center gap-2 text-sm text-[#f85149] p-3 rounded-md border border-[#f85149]/20 bg-[#f85149]/5">
             <AlertCircle className="h-4 w-4 shrink-0" />
-            <span>{displayError}</span>
+            <span>{error}</span>
           </div>
         )}
 

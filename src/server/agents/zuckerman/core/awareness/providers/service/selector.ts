@@ -31,15 +31,20 @@ export class LLMProviderService {
     const anthropicKey = process.env.ANTHROPIC_API_KEY || config.llm?.anthropic?.apiKey;
     const openaiKey = process.env.OPENAI_API_KEY || config.llm?.openai?.apiKey;
     const openrouterKey = process.env.OPENROUTER_API_KEY || config.llm?.openrouter?.apiKey;
-    const customKey = process.env.CUSTOM_API_KEY || config.llm?.custom?.apiKey;
+    const customConfig = config.llm?.custom;
+
+    // Validate custom config - check for non-empty strings
+    const hasBaseUrl = customConfig?.baseUrl && customConfig.baseUrl.trim() !== "";
+    const hasDefaultModel = customConfig?.defaultModel && customConfig.defaultModel.trim() !== "";
+    const hasCustomConfig = hasBaseUrl && hasDefaultModel;
 
     // Determine provider: use override, config default, or auto-detect from available keys
     const providerName = providerOverride ||
-      config.agents?.defaults?.defaultProvider || 
+      config.agents?.defaults?.defaultProvider ||
       (openrouterKey ? "openrouter" :
        anthropicKey ? "anthropic" :
        openaiKey ? "openai" :
-       customKey ? "custom" : null);
+       hasCustomConfig ? "custom" : null);
 
     let provider: LLMProvider | undefined;
 
@@ -62,15 +67,27 @@ export class LLMProviderService {
         provider = new OpenRouterProvider(openrouterKey);
         this.providerRegistry.register(provider);
       }
-    } else if (providerName === "custom" && customKey) {
+    } else if (providerName === "custom" && customConfig) {
+      // Custom provider was explicitly requested - validate config thoroughly
+      if (!hasBaseUrl) {
+        throw new Error(
+          `Custom provider configuration error: 'llm.custom.baseUrl' is missing or empty. ` +
+          `Please provide a valid base URL in .zuckerman/config.json.`
+        );
+      }
+      if (!hasDefaultModel) {
+        throw new Error(
+          `Custom provider configuration error: 'llm.custom.defaultModel' is missing or empty. ` +
+          `Please provide a valid default model in .zuckerman/config.json.`
+        );
+      }
+
       provider = this.providerRegistry.get("custom");
-      if (!provider && customKey) {
-        const baseUrl = config.llm?.custom?.baseUrl;
-        const defaultModel = config.llm?.custom?.defaultModel;
-        if (!baseUrl || !defaultModel) {
-          throw new Error("Custom provider requires baseUrl and defaultModel in config.llm.custom");
-        }
-        provider = new CustomProvider(customKey, baseUrl, defaultModel);
+      if (!provider) {
+        const apiKey = customConfig.apiKey || "";
+        const baseUrl = customConfig.baseUrl!;
+        const defaultModel = customConfig.defaultModel!;
+        provider = new CustomProvider(apiKey, baseUrl, defaultModel);
         this.providerRegistry.register(provider);
       }
     }
@@ -86,15 +103,15 @@ export class LLMProviderService {
     }
 
     if (!provider) {
-      const availableKeys = [
-        openrouterKey && "OPENROUTER_API_KEY",
-        anthropicKey && "ANTHROPIC_API_KEY",
-        openaiKey && "OPENAI_API_KEY",
-        customKey && "CUSTOM_API_KEY",
+      const availableProviders = [
+        openrouterKey && "openrouter (OPENROUTER_API_KEY)",
+        anthropicKey && "anthropic (ANTHROPIC_API_KEY)",
+        openaiKey && "openai (OPENAI_API_KEY)",
+        hasCustomConfig && `custom (config.llm.custom with baseUrl: ${customConfig?.baseUrl?.substring(0, 30)}..., model: ${customConfig?.defaultModel})`,
       ].filter(Boolean);
-      
+
       throw new Error(
-        `No LLM provider available. Set ANTHROPIC_API_KEY, OPENAI_API_KEY, OPENROUTER_API_KEY, or CUSTOM_API_KEY environment variable, or configure in .zuckerman/config.json.${availableKeys.length > 0 ? ` Found keys: ${availableKeys.join(", ")}` : ""}`,
+        `No LLM provider available. Set ANTHROPIC_API_KEY, OPENAI_API_KEY, OPENROUTER_API_KEY environment variable, or configure custom provider in .zuckerman/config.json with baseUrl and defaultModel.${availableProviders.length > 0 ? ` Available providers: ${availableProviders.join(", ")}` : ""}`,
       );
     }
 

@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { AgentRuntime, AgentRunParams, AgentRunResult, StreamCallback } from "@server/world/runtime/agents/types.js";
 import type { LLMMessage, LLMTool } from "@server/agents/zuckerman/core/awareness/providers/types.js";
 import type { SessionId } from "@server/agents/zuckerman/sessions/types.js";
+import type { ZuckermanConfig } from "@server/world/config/types.js";
 import { loadConfig } from "@server/world/config/index.js";
 import { SessionManager } from "@server/agents/zuckerman/sessions/index.js";
 import { ZuckermanToolRegistry } from "@server/agents/zuckerman/tools/registry.js";
@@ -11,6 +12,7 @@ import { LLMProviderService } from "@server/agents/zuckerman/core/awareness/prov
 import { selectModel } from "@server/agents/zuckerman/core/awareness/providers/service/model-selector.js";
 import { PromptLoader, type LoadedPrompts } from "@server/agents/zuckerman/core/memory/loader.js";
 import { agentDiscovery } from "@server/agents/discovery.js";
+import { configEvents } from "@server/world/communication/gateway/server/handlers/config.js";
 import {
   resolveAgentLandDir,
 } from "@server/world/land/resolver.js";
@@ -36,13 +38,27 @@ export class ZuckermanAwareness implements AgentRuntime {
     this.toolRegistry = new ZuckermanToolRegistry();
     this.providerService = providerService || new LLMProviderService();
     this.promptLoader = promptLoader || new PromptLoader();
-    
+
     // Get agent directory from discovery service
     const metadata = agentDiscovery.getMetadata(this.agentId);
     if (!metadata) {
       throw new Error(`Agent "${this.agentId}" not found in discovery service`);
     }
     this.agentDir = metadata.agentDir;
+
+    // Listen for config changes and clear provider cache
+    // This ensures the custom provider is re-registered with new config
+    configEvents.on("config.updated", (newConfig: ZuckermanConfig) => {
+      this.clearProviderCache();
+    });
+  }
+
+  /**
+   * Clear the provider cache to force re-initialization with fresh config
+   * This is called when config is updated to ensure custom provider gets registered
+   */
+  clearProviderCache(): void {
+    this.providerService.clearCache();
   }
 
   async loadPrompts(): Promise<LoadedPrompts> {
