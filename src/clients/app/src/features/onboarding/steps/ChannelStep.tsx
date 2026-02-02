@@ -616,16 +616,19 @@ export function ChannelStep({
 
                 {!signal.connected && (
                   <>
-                    <div className="p-4 bg-[#161b22] rounded-md border border-[#30363d] text-sm text-[#8b949e]">
-                      <div className="font-semibold text-[#c9d1d9] mb-2">Signal Integration Setup</div>
-                      <div className="space-y-1 text-xs">
-                        <p>Signal integration requires signal-cli to be installed and configured.</p>
-                        <p>1) Install signal-cli: https://github.com/AsamK/signal-cli</p>
-                        <p>2) Register your phone number with signal-cli</p>
-                        <p>3) Configure signal-cli to work with this application</p>
-                        <p className="mt-2 font-semibold">Note: Full Signal integration is coming soon.</p>
+                    {/* Signal Setup Info - Only show when connecting or after error */}
+                    {(signal.connecting || signal.error) && (
+                      <div className="p-4 bg-[#161b22] rounded-md border border-[#30363d] text-sm text-[#8b949e]">
+                        <div className="font-semibold text-[#c9d1d9] mb-2">Signal Integration Setup</div>
+                        <div className="space-y-1 text-xs">
+                          <p>Signal integration requires signal-cli to be installed and configured.</p>
+                          <p>1) Install signal-cli: https://github.com/AsamK/signal-cli</p>
+                          <p>2) Register your phone number with signal-cli</p>
+                          <p>3) Configure signal-cli to work with this application</p>
+                          <p className="mt-2 font-semibold">Note: Full Signal integration is coming soon.</p>
+                        </div>
                       </div>
-                    </div>
+                    )}
 
                     {signal.error && (
                       <div className="flex items-start gap-2 text-sm text-[#f85149] p-4 bg-[#f85149]/5 border border-[#f85149]/20 rounded-md">

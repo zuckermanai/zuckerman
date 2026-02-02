@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Loader2, CheckCircle2, AlertCircle, QrCode, MessageSquare, Power, X, Plus, Shield } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
@@ -72,6 +72,7 @@ export function ChannelsView({ gatewayClient }: ChannelsViewProps) {
   const [channels, setChannels] = useState<ChannelStatus[]>([]);
   const [loading, setLoading] = useState(true);
   const [channelStates, setChannelStates] = useState<Record<string, ChannelState>>({});
+  const [selectedChannel, setSelectedChannel] = useState<ChannelId | null>(null);
   const [newPhoneNumber, setNewPhoneNumber] = useState("");
   const [telegramBotToken, setTelegramBotToken] = useState("");
   const [discordBotToken, setDiscordBotToken] = useState("");
@@ -403,70 +404,19 @@ export function ChannelsView({ gatewayClient }: ChannelsViewProps) {
     }
 
     return (
-      <div key={channelId} className="border border-border rounded-md bg-card">
-        <div className="px-6 py-4 border-b border-border">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              {info.icon}
-              <div>
-                <div className="font-semibold text-foreground">{info.name}</div>
-                <div className="text-sm text-muted-foreground">{info.description}</div>
-              </div>
-            </div>
-            {isConnected ? (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => handleChannelDisconnect(channelId)}
-                disabled={!gatewayClient}
-              >
-                <Power className="h-4 w-4 mr-2" />
-                Disconnect
-              </Button>
-            ) : (
-              <Button
-                size="sm"
-                onClick={() => handleChannelConnect(channelId)}
-                disabled={connecting || !gatewayClient || (isTelegram && !telegramBotToken.trim()) || (isDiscord && !discordBotToken.trim())}
-              >
-                {connecting ? (
-                  <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    Connecting...
-                  </>
-                ) : isWhatsApp ? (
-                  <>
-                    <QrCode className="h-4 w-4 mr-2" />
-                    Connect
-                  </>
-                ) : isTelegram ? (
-                  <>
-                    <MessageSquare className="h-4 w-4 mr-2" />
-                    Connect
-                  </>
-                ) : (
-                  <>
-                    <MessageSquare className="h-4 w-4 mr-2" />
-                    Setup
-                  </>
-                )}
-              </Button>
-            )}
-          </div>
-        </div>
-        <div className="px-6 py-4 space-y-4">
+      <div key={channelId} className="space-y-4">
           {isConnected && !qrCode && (
-            <div className="flex items-center gap-2 text-sm text-green-600 dark:text-green-400 p-3 bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-800 rounded-md">
+            <div className="flex items-center gap-2 text-sm text-[#3fb950] p-4 bg-[#238636]/5 border border-[#238636]/20 rounded-md">
               <CheckCircle2 className="h-4 w-4" />
               <span>Successfully connected</span>
             </div>
           )}
 
           {qrCode && qrCode !== "pending" && isWhatsApp && (
-            <div className="flex flex-col items-center gap-4 p-6 bg-muted rounded-md border">
+            <div className="flex flex-col items-center gap-6 p-6 bg-[#161b22] rounded-md border border-[#30363d]">
               <div className="text-center space-y-2">
-                <div className="font-semibold text-sm">Pair with WhatsApp</div>
-                <div className="text-xs text-muted-foreground max-w-[300px]">
+                <div className="font-semibold text-sm text-[#c9d1d9]">Pair with WhatsApp</div>
+                <div className="text-xs text-[#8b949e] max-w-[300px]">
                   Open WhatsApp → Linked Devices → Link a Device.
                 </div>
               </div>
@@ -475,7 +425,7 @@ export function ChannelsView({ gatewayClient }: ChannelsViewProps) {
               </div>
               {!isConnected && (
                 <div className="flex flex-col items-center gap-2">
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <div className="flex items-center gap-2 text-xs text-[#8b949e]">
                     <Loader2 className="h-3 w-3 animate-spin" />
                     <span>Waiting for scan...</span>
                   </div>
@@ -485,7 +435,7 @@ export function ChannelsView({ gatewayClient }: ChannelsViewProps) {
           )}
 
           {error && (
-            <div className="flex items-start gap-2 text-sm text-destructive p-4 bg-destructive/5 border border-destructive/20 rounded-md">
+            <div className="flex items-start gap-2 text-sm text-[#f85149] p-4 bg-[#f85149]/5 border border-[#f85149]/20 rounded-md">
               <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
               <div className="flex-1">
                 <div className="font-semibold">Connection failed</div>
@@ -498,8 +448,8 @@ export function ChannelsView({ gatewayClient }: ChannelsViewProps) {
           {isTelegram && !isConnected && (
             <div className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="telegram-token">Telegram Bot Token</Label>
-                <div className="text-xs text-muted-foreground mb-2 space-y-1">
+                <Label htmlFor="telegram-token" className="text-[#c9d1d9]">Telegram Bot Token</Label>
+                <div className="text-xs text-[#8b949e] mb-2 space-y-1">
                   <p>1) Open Telegram and chat with @BotFather</p>
                   <p>2) Run /newbot (or /mybots)</p>
                   <p>3) Copy the token (looks like 123456:ABC...)</p>
@@ -511,6 +461,7 @@ export function ChannelsView({ gatewayClient }: ChannelsViewProps) {
                   value={telegramBotToken}
                   onChange={(e) => setTelegramBotToken(e.target.value)}
                   disabled={connecting}
+                  className="bg-[#161b22] border-[#30363d] text-[#c9d1d9]"
                 />
               </div>
             </div>
@@ -520,8 +471,8 @@ export function ChannelsView({ gatewayClient }: ChannelsViewProps) {
           {isDiscord && !isConnected && (
             <div className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="discord-token">Discord Bot Token</Label>
-                <div className="text-xs text-muted-foreground mb-2 space-y-1">
+                <Label htmlFor="discord-token" className="text-[#c9d1d9]">Discord Bot Token</Label>
+                <div className="text-xs text-[#8b949e] mb-2 space-y-1">
                   <p>1) Go to https://discord.com/developers/applications</p>
                   <p>2) Create a new application or select an existing one</p>
                   <p>3) Go to Bot section and copy the token</p>
@@ -534,19 +485,18 @@ export function ChannelsView({ gatewayClient }: ChannelsViewProps) {
                   value={discordBotToken}
                   onChange={(e) => setDiscordBotToken(e.target.value)}
                   disabled={connecting}
+                  className="bg-[#161b22] border-[#30363d] text-[#c9d1d9]"
                 />
               </div>
             </div>
           )}
 
-          {/* Signal Setup Info */}
-          {isSignal && !isConnected && (
+          {/* Signal Setup Info - Only show when connecting */}
+          {isSignal && !isConnected && connecting && (
             <div className="space-y-4">
-              <div className="p-4 bg-yellow-50 dark:bg-yellow-950/20 border border-yellow-200 dark:border-yellow-800 rounded-md">
-                <div className="text-sm font-semibold text-yellow-800 dark:text-yellow-200 mb-2">
-                  Signal Integration Setup
-                </div>
-                <div className="text-xs text-yellow-700 dark:text-yellow-300 space-y-1">
+              <div className="p-4 bg-[#161b22] rounded-md border border-[#30363d] text-sm text-[#8b949e]">
+                <div className="font-semibold text-[#c9d1d9] mb-2">Signal Integration Setup</div>
+                <div className="space-y-1 text-xs">
                   <p>Signal integration requires signal-cli to be installed and configured.</p>
                   <p>1) Install signal-cli: https://github.com/AsamK/signal-cli</p>
                   <p>2) Register your phone number with signal-cli</p>
@@ -559,30 +509,30 @@ export function ChannelsView({ gatewayClient }: ChannelsViewProps) {
 
           {/* WhatsApp Security Controls */}
           {isWhatsApp && isConnected && (
-            <div className="pt-4 border-t border-border space-y-4">
+            <div className="pt-4 border-t border-[#30363d] space-y-4">
               <div className="flex items-center gap-2">
-                <Shield className="h-4 w-4 text-muted-foreground" />
-                <div className="font-semibold text-sm">Security & Access Control</div>
+                <Shield className="h-4 w-4 text-[#8b949e]" />
+                <div className="font-semibold text-sm text-[#c9d1d9]">Security & Access Control</div>
               </div>
 
               {/* DM Policy */}
               <div className="space-y-2">
-                <Label htmlFor="dm-policy">Direct Message Policy</Label>
+                <Label htmlFor="dm-policy" className="text-[#c9d1d9]">Direct Message Policy</Label>
                 <Select
                   value={whatsapp.config.dmPolicy || "pairing"}
                   onValueChange={(value) => handleDmPolicyChange(value as "open" | "pairing" | "allowlist")}
                   disabled={whatsapp.savingConfig}
                 >
-                  <SelectTrigger id="dm-policy">
+                  <SelectTrigger id="dm-policy" className="bg-[#161b22] border-[#30363d] text-[#c9d1d9]">
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="open">Open - Accept messages from anyone</SelectItem>
-                    <SelectItem value="pairing">Pairing - Only accept from contacts you've interacted with</SelectItem>
-                    <SelectItem value="allowlist">Allowlist - Only accept from specific phone numbers</SelectItem>
+                  <SelectContent className="bg-[#161b22] border-[#30363d]">
+                    <SelectItem value="open" className="text-[#c9d1d9]">Open - Accept messages from anyone</SelectItem>
+                    <SelectItem value="pairing" className="text-[#c9d1d9]">Pairing - Only accept from contacts you've interacted with</SelectItem>
+                    <SelectItem value="allowlist" className="text-[#c9d1d9]">Allowlist - Only accept from specific phone numbers</SelectItem>
                   </SelectContent>
                 </Select>
-                <p className="text-xs text-muted-foreground">
+                <p className="text-xs text-[#8b949e]">
                   {whatsapp.config.dmPolicy === "open" && "All incoming messages will be accepted."}
                   {whatsapp.config.dmPolicy === "pairing" && "Only messages from contacts you've previously interacted with will be accepted."}
                   {whatsapp.config.dmPolicy === "allowlist" && "Only messages from phone numbers in the allowlist will be accepted."}
@@ -592,7 +542,7 @@ export function ChannelsView({ gatewayClient }: ChannelsViewProps) {
               {/* Allowlist Management */}
               {whatsapp.config.dmPolicy === "allowlist" && (
                 <div className="space-y-2">
-                  <Label>Allowed Phone Numbers</Label>
+                  <Label className="text-[#c9d1d9]">Allowed Phone Numbers</Label>
                   <div className="flex gap-2">
                     <Input
                       placeholder="Enter phone number (e.g., +1234567890)"
@@ -605,12 +555,14 @@ export function ChannelsView({ gatewayClient }: ChannelsViewProps) {
                         }
                       }}
                       disabled={whatsapp.savingConfig}
+                      className="bg-[#161b22] border-[#30363d] text-[#c9d1d9]"
                     />
                     <Button
                       type="button"
                       size="sm"
                       onClick={handleAddToAllowlist}
                       disabled={whatsapp.savingConfig || !newPhoneNumber.trim()}
+                      className="bg-[#21262d] hover:bg-[#30363d] border-[#30363d] text-[#c9d1d9]"
                     >
                       <Plus className="h-4 w-4" />
                     </Button>
@@ -620,16 +572,16 @@ export function ChannelsView({ gatewayClient }: ChannelsViewProps) {
                       {whatsapp.config.allowFrom.map((phoneNumber) => (
                         <div
                           key={phoneNumber}
-                          className="flex items-center justify-between p-2 bg-muted rounded-md text-sm"
+                          className="flex items-center justify-between p-2 bg-[#161b22] rounded-md text-sm border border-[#30363d]"
                         >
-                          <span className="font-mono">{phoneNumber}</span>
+                          <span className="font-mono text-[#c9d1d9]">{phoneNumber}</span>
                           <Button
                             type="button"
                             variant="ghost"
                             size="sm"
                             onClick={() => handleRemoveFromAllowlist(phoneNumber)}
                             disabled={whatsapp.savingConfig}
-                            className="h-6 w-6 p-0"
+                            className="h-6 w-6 p-0 text-[#8b949e] hover:text-[#c9d1d9]"
                           >
                             <X className="h-3 w-3" />
                           </Button>
@@ -638,7 +590,7 @@ export function ChannelsView({ gatewayClient }: ChannelsViewProps) {
                     </div>
                   )}
                   {(!whatsapp.config.allowFrom || whatsapp.config.allowFrom.length === 0) && (
-                    <p className="text-xs text-muted-foreground">
+                    <p className="text-xs text-[#8b949e]">
                       No phone numbers in allowlist. Add numbers above to allow messages from specific contacts.
                     </p>
                   )}
@@ -646,35 +598,170 @@ export function ChannelsView({ gatewayClient }: ChannelsViewProps) {
               )}
             </div>
           )}
+
+        {/* Connect/Disconnect Button */}
+        <div className="flex items-center justify-end gap-3 pt-4 border-t border-[#30363d]">
+          {isConnected ? (
+            <Button
+              variant="outline"
+              onClick={() => handleChannelDisconnect(channelId)}
+              disabled={!gatewayClient}
+              className="bg-[#21262d] hover:bg-[#30363d] border-[#30363d] text-[#c9d1d9]"
+            >
+              <Power className="h-4 w-4 mr-2" />
+              Disconnect
+            </Button>
+          ) : (
+            <Button
+              onClick={() => handleChannelConnect(channelId)}
+              disabled={connecting || !gatewayClient || (isTelegram && !telegramBotToken.trim()) || (isDiscord && !discordBotToken.trim())}
+              className="bg-[#238636] hover:bg-[#2ea043] text-white border-[#238636]"
+            >
+              {connecting ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Connecting...
+                </>
+              ) : isWhatsApp ? (
+                <>
+                  <QrCode className="h-4 w-4 mr-2" />
+                  Connect WhatsApp
+                </>
+              ) : isTelegram ? (
+                <>
+                  <MessageSquare className="h-4 w-4 mr-2" />
+                  Connect Telegram
+                </>
+              ) : isDiscord ? (
+                <>
+                  <MessageSquare className="h-4 w-4 mr-2" />
+                  Connect Discord
+                </>
+              ) : isSignal ? (
+                <>
+                  <MessageSquare className="h-4 w-4 mr-2" />
+                  Connect Signal
+                </>
+              ) : (
+                <>
+                  <MessageSquare className="h-4 w-4 mr-2" />
+                  Setup
+                </>
+              )}
+            </Button>
+          )}
         </div>
       </div>
     );
   };
 
+  const handleChannelSelect = (channel: ChannelId) => {
+    whatsapp.reset();
+    telegram.reset();
+    discord.reset();
+    signal.reset();
+    setSelectedChannel(channel);
+    setTelegramBotToken("");
+    setDiscordBotToken("");
+    setNewPhoneNumber("");
+  };
+
   const availableChannels: ChannelId[] = ["whatsapp", "telegram", "discord", "slack", "signal", "imessage"];
 
+  // Get channel connection status for display
+  const getChannelStatus = (channelId: ChannelId): { connected: boolean; name: string } => {
+    const channel = channels.find((c) => c.id === channelId);
+    if (channelId === "whatsapp") return { connected: whatsapp.connected, name: "WhatsApp" };
+    if (channelId === "telegram") return { connected: telegram.connected, name: "Telegram" };
+    if (channelId === "discord") return { connected: discord.connected, name: "Discord" };
+    if (channelId === "signal") return { connected: signal.connected, name: "Signal" };
+    return { connected: channel?.connected || false, name: CHANNEL_INFO[channelId].name };
+  };
+
   return (
-    <div className="space-y-6">
-      <Card>
-        <CardHeader>
-          <CardTitle>Messaging Channels</CardTitle>
-          <CardDescription>
-            Connect messaging platforms to send and receive messages through your agent.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
+    <div className="max-w-[800px] mx-auto space-y-6">
+      <div className="mb-8">
+        <h1 className="text-2xl font-semibold text-[#c9d1d9] mb-2">
+          Messaging Channels
+        </h1>
+        <p className="text-[#8b949e]">
+          Connect messaging platforms to send and receive messages through your agent.
+        </p>
+      </div>
+
+      {/* Channel Selection */}
+      <div className="border border-[#30363d] rounded-md overflow-hidden bg-[#161b22]">
+        <div className="px-6 py-4 border-b border-[#30363d] bg-[#161b22]">
+          <h2 className="text-base font-semibold text-[#c9d1d9]">Channel Selection</h2>
+          <p className="text-xs text-[#8b949e] mt-1">
+            Choose a messaging platform to configure
+          </p>
+        </div>
+        <div className="p-6 bg-[#0d1117]">
           {loading ? (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground py-8">
+            <div className="flex items-center gap-2 text-sm text-[#8b949e] py-8">
               <Loader2 className="h-4 w-4 animate-spin" />
               Loading channel status...
             </div>
           ) : (
-            <div className="space-y-4">
-              {availableChannels.map(renderChannel)}
-            </div>
+            <RadioGroup
+              value={selectedChannel || ""}
+              onValueChange={(value) => handleChannelSelect(value as ChannelId)}
+              className="grid grid-cols-1 md:grid-cols-2 gap-4"
+            >
+              {availableChannels.map((channelId) => {
+                const info = CHANNEL_INFO[channelId];
+                const status = getChannelStatus(channelId);
+                return (
+                  <label
+                    key={channelId}
+                    className={`flex items-start gap-3 p-4 rounded-md border cursor-pointer transition-all ${
+                      selectedChannel === channelId
+                        ? "border-[#1f6feb] bg-[#1f6feb]/5"
+                        : "border-[#30363d] hover:border-[#8b949e] bg-[#161b22]"
+                    }`}
+                  >
+                    <RadioGroupItem value={channelId} id={channelId} className="mt-1" />
+                    <div className="flex-1 space-y-1">
+                      <div className="font-semibold text-sm text-[#c9d1d9] flex items-center gap-2">
+                        {info.icon}
+                        {info.name}
+                        {status.connected && (
+                          <CheckCircle2 className="h-4 w-4 text-[#3fb950]" />
+                        )}
+                      </div>
+                      <div className="text-xs text-[#8b949e]">{info.description}</div>
+                    </div>
+                  </label>
+                );
+              })}
+            </RadioGroup>
           )}
-        </CardContent>
-      </Card>
+        </div>
+      </div>
+
+      {/* Channel Configuration - Only show when a channel is selected */}
+      {selectedChannel && (
+        <div className="border border-[#30363d] rounded-md overflow-hidden bg-[#161b22]">
+          <div className="px-6 py-4 border-b border-[#30363d] bg-[#161b22]">
+            <h2 className="text-base font-semibold text-[#c9d1d9]">Channel Connection</h2>
+            <p className="text-xs text-[#8b949e] mt-1">
+              {selectedChannel === "whatsapp"
+                ? "Scan the QR code to link your account"
+                : selectedChannel === "telegram"
+                ? "Enter your Telegram bot token to connect"
+                : selectedChannel === "discord"
+                ? "Enter your Discord bot token to connect"
+                : selectedChannel === "signal"
+                ? "Signal requires signal-cli setup (see instructions)"
+                : `Complete ${selectedChannel} setup`}
+            </p>
+          </div>
+          <div className="p-6 space-y-4 bg-[#0d1117]">
+            {renderChannel(selectedChannel)}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
