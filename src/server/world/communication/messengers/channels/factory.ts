@@ -10,6 +10,7 @@ import type { SessionManager } from "@server/agents/zuckerman/sessions/index.js"
 import type { AgentRuntimeFactory } from "@server/world/runtime/agents/index.js";
 import type { Channel } from "./types.js";
 import { setChannelRegistry } from "@server/agents/zuckerman/tools/channels/registry.js";
+import { formatMessageWithChannelSource } from "./envelope.js";
 
 /**
  * Initialize and register all configured channels
@@ -75,7 +76,10 @@ export async function initializeChannels(
           accountId: "default",
         });
 
-        // Add message to session
+        // Format message with channel source prefix
+        const formattedMessage = formatMessageWithChannelSource(message);
+        
+        // Add message to session (store original content, but send formatted to agent)
         sm.addMessage(route.sessionId, "user", message.content);
 
         // Run agent
@@ -91,7 +95,7 @@ export async function initializeChannels(
 
         const result = await runtime.run({
           sessionId: route.sessionId,
-          message: message.content,
+          message: formattedMessage,
           securityContext,
         });
 
@@ -179,7 +183,10 @@ export async function initializeChannels(
           accountId: "default",
         });
 
-        // Add message to session
+        // Format message with channel source prefix
+        const formattedMessage = formatMessageWithChannelSource(message);
+        
+        // Add message to session (store original content, but send formatted to agent)
         sm.addMessage(route.sessionId, "user", message.content);
 
         // Run agent
@@ -195,7 +202,7 @@ export async function initializeChannels(
 
         const result = await runtime.run({
           sessionId: route.sessionId,
-          message: message.content,
+          message: formattedMessage,
           securityContext,
         });
 

@@ -8,13 +8,13 @@ export function createTelegramTool(): Tool {
   return {
     definition: {
       name: "telegram",
-      description: "Send a message or media (images, audio, files) via Telegram. Use this when the user asks you to send a Telegram message, image, or file. Include image or file paths in the message - the tool will automatically detect and send them. If the user asks to send a message to themselves or 'me', you can omit the 'to' parameter and it will automatically use the current Telegram chat. Otherwise, provide the Telegram chat ID (numeric string).",
+      description: "Send a message or media (images, audio, files) via Telegram. Use this when the user asks you to send a Telegram message, image, or file. To send media files, include the file path in the message using one of these formats: (1) 'MEDIA:/path/to/file.png' prefix, (2) markdown image link '![alt](/path/to/image.png)', or (3) direct file path '/path/to/file.png'. The tool automatically detects and sends media files. Supports images (png, jpg, jpeg, gif, webp), audio (mp3, ogg, opus, wav, m4a), and other files as documents. Paths support ~ for home directory and relative paths. If the user asks to send to themselves or 'me', omit the 'to' parameter to auto-detect the current Telegram chat.",
       parameters: {
         type: "object",
         properties: {
           message: {
             type: "string",
-            description: "The message text to send. To send images or files, include the file path in the message. The tool will automatically detect and send media files.",
+            description: "The message text to send. To send media files, include the file path using: 'MEDIA:/path/to/file.png', markdown '![alt](/path/to/image.png)', or direct path '/path/to/file.png'. Supports images (png, jpg, jpeg, gif, webp), audio (mp3, ogg, opus, wav, m4a), and documents. Paths support ~ (home) and relative paths. Media files are automatically detected and sent.",
           },
           to: {
             type: "string",
