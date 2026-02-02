@@ -1,4 +1,4 @@
-import { chromium, type Browser, type Page } from "playwright-core";
+import { chromium, type Browser, type Page, type BrowserContext } from "playwright-core";
 import type { SecurityContext } from "@server/world/execution/security/types.js";
 import { isToolAllowed } from "@server/world/execution/security/policy/tool-policy.js";
 import type { Tool, ToolDefinition, ToolResult } from "../terminal/index.js";
@@ -10,17 +10,94 @@ import { promisify } from "node:util";
 
 const BROWSER_DATA_DIR = join(homedir(), ".zuckerman", "browser");
 
+// Browser manager to maintain a single browser instance across calls
+class BrowserManager {
+  private browser: Browser | null = null;
+  private context: BrowserContext | null = null;
+  private page: Page | null = null;
+
+  async getBrowser(): Promise<Browser> {
+    if (!this.browser || !this.browser.isConnected()) {
+      // Ensure browser data directory exists
+      if (!existsSync(BROWSER_DATA_DIR)) {
+        mkdirSync(BROWSER_DATA_DIR, { recursive: true });
+      }
+
+      this.browser = await chromium.launch({
+        headless: false, // Show browser window
+        channel: "chrome", // Try Chrome first, falls back to chromium
+        timeout: 30000, // 30 second timeout for launch
+        args: [
+          "--start-maximized", // Start maximized so it's visible
+          "--disable-blink-features=AutomationControlled", // Don't show automation banner
+        ],
+      });
+
+      this.context = await this.browser.newContext({
+        viewport: null, // Use full screen
+      });
+
+      this.page = await this.context.newPage();
+
+      // Bring browser to front (macOS)
+      if (process.platform === "darwin") {
+        try {
+          const execAsync = promisify(exec);
+          await execAsync(`osascript -e 'tell application "System Events" to set frontmost of every process whose name contains "Chrome" to true'`);
+        } catch {
+          // Ignore if it fails
+        }
+      }
+    }
+    return this.browser;
+  }
+
+  async getPage(): Promise<Page> {
+    await this.getBrowser();
+    if (!this.page || this.page.isClosed()) {
+      // If context is disconnected, getBrowser() will recreate it
+      if (!this.context || !this.context.browser()?.isConnected()) {
+        await this.getBrowser();
+      }
+      // Create new page from existing context
+      this.page = await this.context!.newPage();
+    }
+    return this.page;
+  }
+
+  async close(): Promise<void> {
+    if (this.page && !this.page.isClosed()) {
+      await this.page.close().catch(() => {});
+    }
+    if (this.context) {
+      await this.context.close().catch(() => {});
+    }
+    if (this.browser && this.browser.isConnected()) {
+      await this.browser.close();
+    }
+    this.browser = null;
+    this.context = null;
+    this.page = null;
+  }
+
+  isOpen(): boolean {
+    return this.browser !== null && this.browser.isConnected();
+  }
+}
+
+const browserManager = new BrowserManager();
+
 export function createBrowserTool(): Tool {
   return {
     definition: {
       name: "browser",
-      description: "Control Chrome/Chromium browser via CDP. Navigate, take snapshots, interact with pages. Browser closes after each action. Screenshots are saved to local file paths that can be shared or sent via appropriate channels.",
+      description: "Control Chrome/Chromium browser via CDP. Navigate, take snapshots, interact with pages. Browser stays open indefinitely until explicitly closed with the 'close' action. Screenshots are saved to local file paths that can be shared or sent via appropriate channels.",
       parameters: {
         type: "object",
         properties: {
           action: {
             type: "string",
-            description: "Action to perform: navigate, snapshot, screenshot, click, type, evaluate",
+            description: "Action to perform: navigate, snapshot, screenshot, click, type, evaluate, close",
           },
           url: {
             type: "string",
@@ -77,11 +154,23 @@ export function createBrowserTool(): Tool {
         }
 
         // Validate action before launching browser
-        const validActions = ["navigate", "snapshot", "screenshot", "click", "type", "evaluate"];
+        const validActions = ["navigate", "snapshot", "screenshot", "click", "type", "evaluate", "close"];
         if (!validActions.includes(action)) {
           return {
             success: false,
             error: `Unknown action: ${action}. Valid actions are: ${validActions.join(", ")}`,
+          };
+        }
+
+        // Handle close action early (doesn't need browser)
+        if (action === "close") {
+          await browserManager.close();
+          return {
+            success: true,
+            result: {
+              action: "closed",
+              message: "Browser closed successfully",
+            },
           };
         }
 
@@ -99,40 +188,10 @@ export function createBrowserTool(): Tool {
           return { success: false, error: "code is required for evaluate action" };
         }
 
-        // Ensure browser data directory exists
-        if (!existsSync(BROWSER_DATA_DIR)) {
-          mkdirSync(BROWSER_DATA_DIR, { recursive: true });
-        }
+        // Get or create browser instance (reused across calls)
+        const page = await browserManager.getPage();
 
-        // Launch browser with timeout (visible, not headless)
-        const browser = await chromium.launch({
-          headless: false, // Show browser window
-          channel: "chrome", // Try Chrome first, falls back to chromium
-          timeout: 30000, // 30 second timeout for launch
-          args: [
-            "--start-maximized", // Start maximized so it's visible
-            "--disable-blink-features=AutomationControlled", // Don't show automation banner
-          ],
-        });
-
-        try {
-          const context = await browser.newContext({
-            viewport: null, // Use full screen
-          });
-          const page = await context.newPage();
-          
-          // Bring browser to front (macOS)
-          if (process.platform === "darwin") {
-            try {
-              const execAsync = promisify(exec);
-              // Get the browser process and bring it to front
-              await execAsync(`osascript -e 'tell application "System Events" to set frontmost of every process whose name contains "Chrome" to true'`);
-            } catch {
-              // Ignore if it fails
-            }
-          }
-
-          switch (action) {
+        switch (action) {
             case "navigate": {
               const url = typeof params.url === "string" ? params.url : undefined;
               if (!url) {
@@ -324,15 +383,9 @@ export function createBrowserTool(): Tool {
             default:
               return {
                 success: false,
-                error: `Unknown action: ${action}. Supported: navigate, snapshot, screenshot, click, type, evaluate`,
+                error: `Unknown action: ${action}. Supported: navigate, snapshot, screenshot, click, type, evaluate, close`,
               };
           }
-        } finally {
-          // Keep browser open for a few seconds so user can see it (when not headless)
-          // Wait 5 seconds before closing
-          await new Promise((resolve) => setTimeout(resolve, 5000));
-          await browser.close();
-        }
       } catch (err) {
         return {
           success: false,
