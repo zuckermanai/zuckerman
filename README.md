@@ -43,13 +43,13 @@ You get an approachable, customizable agent that literally grows by rewriting it
 
 Everything is plain-text configurable and instantly reloadable.
 
-- **World** (`src/world/`) — the lightweight OS layer  
+- **World** (`src/server/world/`) — the lightweight OS layer  
   Communication (messengers, gateway), Execution (processes, security), Runtime (agent factory), Config loader, Voice, System utils
 
-- **Agents** (`src/agents/`) — self-contained agent definitions  
+- **Agents** (`src/server/agents/`) — self-contained agent definitions  
   Each folder = one agent (core modules, tools, sessions, personality)
 
-- **Interfaces** (`src/interfaces/`) — how you talk to it  
+- **Interfaces** (`src/clients/`) — how you talk to it  
   CLI + Electron/React app (chat, inspector, settings, onboarding)
 
 ## Quick Start
