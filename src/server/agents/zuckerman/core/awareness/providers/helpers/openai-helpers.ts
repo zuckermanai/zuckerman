@@ -98,7 +98,16 @@ export function toOpenAIRequest(params: {
 
   for (const msg of params.messages) {
     if (msg.role === "system") {
-      continue; // Already handled
+      // Only skip if systemPrompt was provided separately, otherwise include it
+      if (params.systemPrompt) {
+        continue; // Already handled via systemPrompt parameter
+      }
+      // Include system message from array if no separate systemPrompt provided
+      messages.push({
+        role: "system",
+        content: msg.content,
+      });
+      continue;
     }
 
     if (msg.role === "user") {

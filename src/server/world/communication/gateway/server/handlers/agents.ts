@@ -7,6 +7,8 @@ import { resolveSecurityContext } from "@server/world/execution/security/context
 import { resolveAgentLand } from "@server/world/communication/routing/resolver.js";
 import type { StreamEvent } from "@server/world/runtime/agents/types.js";
 import { sendEvent } from "../connection.js";
+import { writeFile } from "node:fs/promises";
+import { join } from "node:path";
 
 export function createAgentHandlers(
   conversationManager: ConversationManager,
@@ -249,44 +251,95 @@ export function createAgentHandlers(
 
         const prompts = await runtime.loadPrompts();
         const promptsData = prompts as {
-          system?: string;
-          behavior?: string;
-          personality?: string;
-          instructions?: string;
           files?: Map<string, string>;
         };
 
-        // Get agent metadata for logging
-        const metadata = agentDiscovery.getMetadata(agentId);
-
-        // Extract file names from paths (just the filename, not full path)
-        const fileNames: string[] = [];
+        // Convert Map to object with filename as key
+        const files: Record<string, string> = {};
         if (promptsData.files) {
-          for (const filePath of promptsData.files.keys()) {
-            // Get just the filename from the path
-            const fileName = filePath.split(/[/\\]/).pop() || filePath;
-            // Only include files that aren't already shown (system, behavior, personality, instructions)
-            if (!["system.md", "behavior.md", "personality.md", "README.md"].includes(fileName)) {
-              fileNames.push(fileName);
-            }
+          for (const [fileName, content] of promptsData.files.entries()) {
+            files[fileName] = content;
           }
         }
 
-        // Return prompts - use undefined instead of empty string if not found
-        // This allows the client to distinguish between "not loaded" and "empty content"
+        // Return all files dynamically
         respond(true, {
           agentId,
-          system: promptsData.system,
-          behavior: promptsData.behavior,
-          personality: promptsData.personality,
-          instructions: promptsData.instructions,
-          fileCount: promptsData.files?.size ?? 0,
-          additionalFiles: fileNames.sort(),
+          files,
         });
       } catch (err) {
         respond(false, undefined, {
           code: "ERROR",
           message: err instanceof Error ? err.message : "Failed to load prompts",
+        });
+      }
+    },
+
+    "agent.savePrompt": async ({ respond, params }) => {
+      const agentId = params?.agentId as string | undefined;
+      const fileName = params?.fileName as string | undefined;
+      const content = params?.content as string | undefined;
+
+      if (!agentId) {
+        respond(false, undefined, {
+          code: "INVALID_REQUEST",
+          message: "Missing agentId",
+        });
+        return;
+      }
+
+      if (!fileName) {
+        respond(false, undefined, {
+          code: "INVALID_REQUEST",
+          message: "Missing fileName",
+        });
+        return;
+      }
+
+      if (content === undefined) {
+        respond(false, undefined, {
+          code: "INVALID_REQUEST",
+          message: "Missing content",
+        });
+        return;
+      }
+
+      try {
+        // Resolve agent directory from discovery service
+        const metadata = agentDiscovery.getMetadata(agentId);
+        if (!metadata) {
+          respond(false, undefined, {
+            code: "AGENT_NOT_FOUND",
+            message: `Agent "${agentId}" not found in discovery service`,
+          });
+          return;
+        }
+        const agentDir = metadata.agentDir;
+        const personalityDir = join(agentDir, "core", "personality");
+        
+        // Ensure fileName ends with .md
+        const fileWithExt = fileName.endsWith(".md") ? fileName : `${fileName}.md`;
+        const filePath = join(personalityDir, fileWithExt);
+
+        // Write file
+        await writeFile(filePath, content, "utf-8");
+
+        // Clear caches to ensure fresh load
+        agentFactory.clearCache(agentId);
+        const runtime = await agentFactory.getRuntime(agentId);
+        if ((runtime as any).promptLoader?.clearCache) {
+          (runtime as any).promptLoader.clearCache(agentDir);
+        }
+
+        respond(true, {
+          agentId,
+          fileName: fileWithExt,
+          saved: true,
+        });
+      } catch (err) {
+        respond(false, undefined, {
+          code: "ERROR",
+          message: err instanceof Error ? err.message : "Failed to save prompt file",
         });
       }
     },

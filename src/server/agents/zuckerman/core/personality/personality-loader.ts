@@ -3,10 +3,6 @@ import { join } from "node:path";
 import { existsSync } from "node:fs";
 
 export interface LoadedPrompts {
-  system: string;
-  behavior: string;
-  personality: string;
-  instructions: string;
   files: Map<string, string>;
 }
 
@@ -27,54 +23,30 @@ export class PromptLoader {
     }
 
     const coreDir = join(agentDir, "core");
+    const personalityDir = join(coreDir, "personality");
     const prompts: LoadedPrompts = {
-      system: "",
-      behavior: "",
-      personality: "",
-      instructions: "",
       files: new Map(),
     };
 
-    // Load core prompt files from personality directory
-    const personalityDir = join(coreDir, "personality");
-    const coreFiles = [
-      { path: join(personalityDir, "system.md"), key: "system" as const },
-      { path: join(personalityDir, "behavior.md"), key: "behavior" as const },
-      { path: join(personalityDir, "personality.md"), key: "personality" as const },
-      { path: join(personalityDir, "README.md"), key: "instructions" as const },
-    ];
-
-    for (const file of coreFiles) {
-      if (existsSync(file.path)) {
-        try {
-          const content = await readFile(file.path, "utf-8");
-          prompts[file.key] = content;
-          prompts.files.set(file.path, content);
-        } catch (err) {
-          console.warn(`[PromptLoader] Failed to load ${file.path}:`, err);
-        }
-      } else {
-        console.warn(`[PromptLoader] File not found: ${file.path} (agentDir: ${agentDir}, personalityDir: ${personalityDir})`);
-      }
-    }
-
-    // Load all remaining markdown files from personality directory (skip already loaded ones)
+    // Load all markdown files from personality directory
     try {
       if (existsSync(personalityDir)) {
         const files = await readdir(personalityDir);
         for (const file of files) {
           if (file.endsWith(".md")) {
             const filePath = join(personalityDir, file);
-            // Skip files that were already loaded in the coreFiles loop
-            if (!prompts.files.has(filePath)) {
+            try {
               const content = await readFile(filePath, "utf-8");
-              prompts.files.set(filePath, content);
+              const fileName = file.replace(".md", "");
+              prompts.files.set(fileName, content);
+            } catch (err) {
+              console.warn(`[PromptLoader] Failed to load ${filePath}:`, err);
             }
           }
         }
       }
     } catch (err) {
-      console.warn(`Failed to load personality directory files:`, err);
+      console.warn(`[PromptLoader] Failed to read personality directory:`, err);
     }
 
     this.promptCache.set(agentDir, prompts);
@@ -87,45 +59,12 @@ export class PromptLoader {
   buildSystemPrompt(prompts: LoadedPrompts): string {
     const parts: string[] = [];
 
-    if (prompts.system) {
-      parts.push(`# System\n\n${prompts.system}`);
-    }
-
-    // Collect all personality files from personality directory
-    const personalityFiles: Array<{ path: string; content: string }> = [];
-    const personalityFileNames = ["personality.md", "traits.md", "motivations.md", "values.md", "fear.md", "joy.md"];
-    for (const [filePath, content] of prompts.files.entries()) {
-      const fileName = filePath.split("/").pop() || "";
-      if (personalityFileNames.includes(fileName)) {
-        personalityFiles.push({ path: filePath, content });
+    // Include all loaded files
+    for (const [fileName, content] of prompts.files.entries()) {
+      if (content) {
+        const sectionName = fileName.charAt(0).toUpperCase() + fileName.slice(1);
+        parts.push(`# ${sectionName}\n\n${content}`);
       }
-    }
-
-    // Sort: personality.md first, then others alphabetically
-    personalityFiles.sort((a, b) => {
-      const aIsMain = a.path.endsWith("/personality.md");
-      const bIsMain = b.path.endsWith("/personality.md");
-      if (aIsMain && !bIsMain) return -1;
-      if (!aIsMain && bIsMain) return 1;
-      return a.path.localeCompare(b.path);
-    });
-
-    if (personalityFiles.length > 0) {
-      const personalityContent = personalityFiles
-        .map((file) => file.content)
-        .join("\n\n---\n\n");
-      parts.push(`# Personality\n\n${personalityContent}`);
-    } else if (prompts.personality) {
-      // Fallback to main personality if no files found
-      parts.push(`# Personality\n\n${prompts.personality}`);
-    }
-
-    if (prompts.behavior) {
-      parts.push(`# Behavior\n\n${prompts.behavior}`);
-    }
-
-    if (prompts.instructions) {
-      parts.push(`# Instructions\n\n${prompts.instructions}`);
     }
 
     return parts.join("\n\n---\n\n");

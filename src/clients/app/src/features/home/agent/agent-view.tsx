@@ -38,12 +38,7 @@ type AgentTab = "overview" | "prompts" | "tools" | "conversations" | "activities
 
 interface AgentPrompts {
   agentId?: string;
-  system?: string;
-  behavior?: string;
-  personality?: string;
-  instructions?: string;
-  fileCount?: number;
-  additionalFiles?: string[];
+  files?: Record<string, string>;
 }
 
 const TOOL_ICONS: Record<string, React.ReactNode> = {
@@ -86,6 +81,9 @@ export function AgentView({ agentId, state, gatewayClient, onClose }: AgentViewP
   const [prompts, setPrompts] = useState<AgentPrompts | null>(null);
   const [loadingPrompts, setLoadingPrompts] = useState(false);
   const [promptsError, setPromptsError] = useState<string | null>(null);
+  const [editingFile, setEditingFile] = useState<string | null>(null);
+  const [editedContent, setEditedContent] = useState<Record<string, string>>({});
+  const [saving, setSaving] = useState(false);
   const [archivedExpanded, setArchivedExpanded] = useState(false);
   const [activities, setActivities] = useState<ActivityItem[]>([]);
   const [loadingActivities, setLoadingActivities] = useState(false);
@@ -129,22 +127,11 @@ export function AgentView({ agentId, state, gatewayClient, onClose }: AgentViewP
       const response = await gatewayClient.request("agent.prompts", { agentId });
       if (response.ok && response.result) {
         const result = response.result as AgentPrompts;
-        
-        // Check if we actually got any content
-        const hasContent = 
-          (result.system && result.system.trim() !== "") ||
-          (result.behavior && result.behavior.trim() !== "") ||
-          (result.personality && result.personality.trim() !== "") ||
-          (result.instructions && result.instructions.trim() !== "") ||
-          (result.additionalFiles && result.additionalFiles.length > 0);
-        
-        if (hasContent) {
-          setPrompts(result);
-          setPromptsError(null);
-        } else {
-          setPrompts(result);
-          setPromptsError("Prompts loaded but appear to be empty. Check console for details.");
-          console.warn("[AgentView] Prompts are empty. Full response:", result);
+        setPrompts(result);
+        setPromptsError(null);
+        // Initialize edited content with current content
+        if (result.files) {
+          setEditedContent({ ...result.files });
         }
       } else {
         setPromptsError(response.error?.message || "Failed to load prompts");
@@ -156,6 +143,40 @@ export function AgentView({ agentId, state, gatewayClient, onClose }: AgentViewP
       console.error("[AgentView] Error loading prompts:", error);
     } finally {
       setLoadingPrompts(false);
+    }
+  };
+
+  const savePromptFile = async (fileName: string) => {
+    if (!gatewayClient?.isConnected()) {
+      setPromptsError("Not connected to gateway");
+      return;
+    }
+
+    const content = editedContent[fileName];
+    if (content === undefined) {
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const response = await gatewayClient.request("agent.savePrompt", {
+        agentId,
+        fileName,
+        content,
+      });
+
+      if (response.ok) {
+        // Reload prompts to get fresh data
+        await loadPrompts();
+        setEditingFile(null);
+      } else {
+        setPromptsError(response.error?.message || "Failed to save file");
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Failed to save file";
+      setPromptsError(errorMessage);
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -528,88 +549,92 @@ export function AgentView({ agentId, state, gatewayClient, onClose }: AgentViewP
                   <div className="border border-destructive/50 rounded-md bg-destructive/10 px-6 py-4">
                     <p className="text-sm text-destructive">{promptsError}</p>
                   </div>
-                ) : prompts ? (
+                ) : prompts && prompts.files ? (
                   <>
-                    {prompts.system && (
-                      <div className="border border-border rounded-md bg-card">
-                        <div className="px-6 py-4 border-b border-border">
-                          <h2 className="text-base font-semibold text-foreground">System Prompt</h2>
+                    {Object.entries(prompts.files)
+                      .sort(([a], [b]) => a.localeCompare(b))
+                      .map(([fileName, content]) => (
+                        <div key={fileName} className="border border-border rounded-md bg-card">
+                          <div className="px-6 py-4 border-b border-border flex items-center justify-between">
+                            <h2 className="text-base font-semibold text-foreground capitalize">
+                              {fileName.replace(".md", "").replace(/-/g, " ")}
+                            </h2>
+                            {editingFile === fileName ? (
+                              <div className="flex items-center gap-2">
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => {
+                                    setEditingFile(null);
+                                    // Reset edited content for this file
+                                    if (prompts.files) {
+                                      setEditedContent((prev) => ({
+                                        ...prev,
+                                        [fileName]: prompts.files![fileName],
+                                      }));
+                                    }
+                                  }}
+                                  disabled={saving}
+                                >
+                                  Cancel
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  onClick={() => savePromptFile(fileName)}
+                                  disabled={saving}
+                                >
+                                  {saving ? (
+                                    <>
+                                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                      Saving...
+                                    </>
+                                  ) : (
+                                    "Save"
+                                  )}
+                                </Button>
+                              </div>
+                            ) : (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => {
+                                  setEditingFile(fileName);
+                                  if (!editedContent[fileName] && prompts.files) {
+                                    setEditedContent((prev) => ({
+                                      ...prev,
+                                      [fileName]: prompts.files![fileName] || "",
+                                    }));
+                                  }
+                                }}
+                              >
+                                <Edit className="h-4 w-4 mr-2" />
+                                Edit
+                              </Button>
+                            )}
+                          </div>
+                          <div className="max-h-[400px] overflow-y-auto">
+                            {editingFile === fileName ? (
+                              <textarea
+                                value={editedContent[fileName] || ""}
+                                onChange={(e) =>
+                                  setEditedContent((prev) => ({
+                                    ...prev,
+                                    [fileName]: e.target.value,
+                                  }))
+                                }
+                                className="w-full px-6 py-4 text-sm font-mono text-foreground bg-background border-0 focus:outline-none resize-none"
+                                rows={15}
+                                style={{ minHeight: "200px" }}
+                              />
+                            ) : (
+                              <pre className="px-6 py-4 text-sm font-mono text-foreground whitespace-pre-wrap">
+                                {content}
+                              </pre>
+                            )}
+                          </div>
                         </div>
-                        <div className="max-h-[400px] overflow-y-auto">
-                          <pre className="px-6 py-4 text-sm font-mono text-foreground whitespace-pre-wrap">
-                            {prompts.system}
-                          </pre>
-                        </div>
-                      </div>
-                    )}
-
-                    {prompts.behavior && (
-                      <div className="border border-border rounded-md bg-card">
-                        <div className="px-6 py-4 border-b border-border">
-                          <h2 className="text-base font-semibold text-foreground">Behavior</h2>
-                        </div>
-                        <div className="max-h-[400px] overflow-y-auto">
-                          <pre className="px-6 py-4 text-sm font-mono text-foreground whitespace-pre-wrap">
-                            {prompts.behavior}
-                          </pre>
-                        </div>
-                      </div>
-                    )}
-
-                    {prompts.personality && (
-                      <div className="border border-border rounded-md bg-card">
-                        <div className="px-6 py-4 border-b border-border">
-                          <h2 className="text-base font-semibold text-foreground">Personality</h2>
-                        </div>
-                        <div className="max-h-[400px] overflow-y-auto">
-                          <pre className="px-6 py-4 text-sm font-mono text-foreground whitespace-pre-wrap">
-                            {prompts.personality}
-                          </pre>
-                        </div>
-                      </div>
-                    )}
-
-                    {prompts.instructions && (
-                      <div className="border border-border rounded-md bg-card">
-                        <div className="px-6 py-4 border-b border-border">
-                          <h2 className="text-base font-semibold text-foreground">Instructions</h2>
-                        </div>
-                        <div className="max-h-[400px] overflow-y-auto">
-                          <pre className="px-6 py-4 text-sm font-mono text-foreground whitespace-pre-wrap">
-                            {prompts.instructions}
-                          </pre>
-                        </div>
-                      </div>
-                    )}
-
-                    {prompts.additionalFiles && prompts.additionalFiles.length > 0 && (
-                      <div className="border border-border rounded-md bg-card">
-                        <div className="px-6 py-4 border-b border-border">
-                          <h2 className="text-base font-semibold text-foreground">Additional Prompt Files</h2>
-                        </div>
-                        <div className="px-6 py-4">
-                          <ul className="space-y-2">
-                            {prompts.additionalFiles.map((fileName, idx) => (
-                              <li key={idx} className="text-sm text-foreground">
-                                • {fileName}
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                      </div>
-                    )}
-
-                    {prompts.fileCount !== undefined && prompts.fileCount > 0 && !prompts.additionalFiles && (
-                      <div className="text-sm text-muted-foreground">
-                        {prompts.fileCount} additional prompt file{prompts.fileCount !== 1 ? "s" : ""}
-                      </div>
-                    )}
-
-                    {(!prompts.system || prompts.system.trim() === "") && 
-                     (!prompts.behavior || prompts.behavior.trim() === "") && 
-                     (!prompts.personality || prompts.personality.trim() === "") && 
-                     (!prompts.instructions || prompts.instructions.trim() === "") && 
-                     (!prompts.additionalFiles || prompts.additionalFiles.length === 0) && (
+                      ))}
+                    {Object.keys(prompts.files).length === 0 && (
                       <div className="text-center py-12 text-muted-foreground">
                         No prompts available for this agent
                       </div>
