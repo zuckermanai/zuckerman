@@ -16,7 +16,6 @@ import {
   resolveAgentHomedirDir,
 } from "@server/world/homedir/resolver.js";
 import { UnifiedMemoryManager } from "@server/agents/zuckerman/core/memory/manager.js";
-import type { SemanticMemory, EpisodicMemory, ProceduralMemory } from "@server/agents/zuckerman/core/memory/types.js";
 import { runSleepModeIfNeeded } from "@server/agents/zuckerman/sleep/index.js";
 import { activityRecorder } from "@server/world/activity/index.js";
 import { resolveMemorySearchConfig } from "@server/agents/zuckerman/core/memory/config.js";
@@ -50,14 +49,11 @@ export class ZuckermanAwareness implements AgentRuntime {
   }
 
   /**
-   * Initialize memory manager with homedir directory and provider
+   * Initialize memory manager with homedir directory
    */
-  private initializeMemoryManager(homedirDir: string, provider?: any): void {
+  private initializeMemoryManager(homedirDir: string): void {
     if (!this.memoryManager) {
-      this.memoryManager = UnifiedMemoryManager.create(homedirDir, provider, this.agentId);
-    } else if (provider) {
-      // Update provider if manager already exists
-      this.memoryManager.setLLMProvider(provider);
+      this.memoryManager = UnifiedMemoryManager.create(homedirDir, this.agentId);
     }
   }
 
@@ -113,7 +109,7 @@ export class ZuckermanAwareness implements AgentRuntime {
     // This ensures any semantic memories added during message processing are included
     if (homedirDir && this.memoryManager) {
       // Always reload from files to get the latest semantic memory updates
-      const memorySection = this.memoryManager.loadMemoryForPrompt();
+      const memorySection = this.memoryManager.getSystemMemory();
       if (memorySection) {
         parts.push(memorySection);
       }
@@ -169,7 +165,7 @@ export class ZuckermanAwareness implements AgentRuntime {
       const homedirDir = resolveAgentHomedirDir(config, this.agentId);
 
       // Initialize memory manager if not already initialized
-      this.initializeMemoryManager(homedirDir, provider);
+      this.initializeMemoryManager(homedirDir);
 
       // Check if sleep mode is needed before processing the message
       // This processes and consolidates memories if context window is getting full
@@ -192,44 +188,12 @@ export class ZuckermanAwareness implements AgentRuntime {
       // Retrieve relevant memories based on the user message
       let retrievedMemoriesText = "";
       try {
-        const memoryResult = await this.getMemoryManager().retrieveMemories({
+        retrievedMemoriesText = await this.getMemoryManager().getRelevantMemoryContext({
           query: message,
-          conversationId,
           types: ["semantic", "episodic", "procedural"],
           limit: 10,
         });
-
-        if (memoryResult.memories.length > 0) {
-          const memoryParts = memoryResult.memories.map((mem) => {
-            if (mem.type === "semantic") {
-              const semantic = mem as unknown as SemanticMemory;
-              // Format semantic memory clearly
-              let formatted = semantic.fact;
-              
-              // Add category if available
-              if (semantic.category) {
-                formatted = `${semantic.category}: ${formatted}`;
-              }
-              
-              // Add confidence if available and high
-              if (semantic.confidence !== undefined && semantic.confidence >= 0.7) {
-                formatted = `${formatted} (confidence: ${semantic.confidence.toFixed(1)})`;
-              }
-              
-              return `[Semantic Memory] ${formatted}`;
-            } else if (mem.type === "episodic") {
-              const episodic = mem as unknown as EpisodicMemory;
-              return `[Episodic Memory] ${episodic.event}: ${episodic.context.what}`;
-            } else if (mem.type === "procedural") {
-              const procedural = mem as unknown as ProceduralMemory;
-              return `[Procedural Memory] ${procedural.pattern}: ${procedural.action}`;
-            }
-            return `[Memory] ${JSON.stringify(mem)}`;
-          });
-          retrievedMemoriesText = `\n\n## Retrieved Memories\n${memoryParts.join("\n")}`;
-        }
       } catch (memoryError) {
-        // Don't fail if memory retrieval fails
         console.warn(`[ZuckermanRuntime] Memory retrieval failed:`, memoryError);
       }
 
@@ -260,8 +224,7 @@ export class ZuckermanAwareness implements AgentRuntime {
         const conversationContext = conversation 
           ? conversation.messages.slice(-3).map(m => m.content).join("\n")
           : undefined;
-          console.log("conversationContext", conversationContext);
-        await this.getMemoryManager().onNewMessage(message, conversationId, conversationContext);
+        await this.getMemoryManager().onNewMessage(provider, message, conversationId, conversationContext);
       } catch (extractionError) {
         // Don't fail the main flow if extraction fails
         console.warn(`[ZuckermanRuntime] Memory extraction failed:`, extractionError);

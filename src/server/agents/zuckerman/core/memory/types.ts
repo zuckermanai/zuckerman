@@ -159,9 +159,11 @@ export interface MemoryManager {
   // Unified retrieval
   retrieveMemories(options: MemoryRetrievalOptions): Promise<MemoryRetrievalResult>;
   
+  // Memory formatting for prompts
+  getRelevantMemoryContext(options: MemoryRetrievalOptions): Promise<string>;
+  getSystemMemory(): string;
+  
   // Cleanup
   cleanup(): Promise<void>;
   clearExpiredWorkingMemory(): void;
-  
-  loadMemoryForPrompt(): string;
 }

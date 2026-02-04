@@ -79,15 +79,6 @@ export class SemanticMemoryStore {
       results = results.filter(m => m.category === options.category);
     }
 
-    // Filter by query (search in fact text)
-    if (options?.query) {
-      const queryLower = options.query.toLowerCase();
-      results = results.filter(m => 
-        m.fact.toLowerCase().includes(queryLower) ||
-        m.category?.toLowerCase().includes(queryLower)
-      );
-    }
-
     // Sort by recency (newest first)
     results.sort((a, b) => b.updatedAt - a.updatedAt);
 

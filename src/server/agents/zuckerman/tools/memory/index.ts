@@ -40,7 +40,6 @@ export function createMemorySearchTool(): Tool {
     },
     handler: async (params, securityContext, executionContext) => {
       try {
-        console.log("memory_search", params);
         const query = params.query as string;
         if (!query || typeof query !== "string") {
           return {
@@ -51,9 +50,8 @@ export function createMemorySearchTool(): Tool {
 
         const agentId = securityContext.agentId;
         const homedirDir = executionContext.homedirDir;
-        const conversationId = executionContext.conversationId;
 
-        const memoryManager = UnifiedMemoryManager.create(homedirDir, undefined, agentId);
+        const memoryManager = UnifiedMemoryManager.create(homedirDir, agentId);
 
         const types = params.types as MemoryType[] | undefined;
         const limit = typeof params.limit === "number" ? params.limit : 20;
@@ -64,7 +62,6 @@ export function createMemorySearchTool(): Tool {
           types,
           limit,
           maxAge,
-          conversationId,
         });
 
         return {
@@ -130,7 +127,7 @@ export function createMemoryGetTool(): Tool {
         const conversationId = params.conversationId as string | undefined || executionContext.conversationId;
         const limit = typeof params.limit === "number" ? params.limit : undefined;
 
-        const memoryManager = UnifiedMemoryManager.create(homedirDir, undefined, agentId);
+        const memoryManager = UnifiedMemoryManager.create(homedirDir, agentId);
 
         let memories: unknown[] = [];
 

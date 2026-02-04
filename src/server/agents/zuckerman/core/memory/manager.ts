@@ -38,11 +38,9 @@ export class UnifiedMemoryManager implements MemoryManager {
 
   private homedirDir?: string;
   private agentId?: string;
-  private llmProvider?: LLMProvider;
   private dbInitialized: boolean = false;
 
-  constructor(homedirDir?: string, llmProvider?: LLMProvider, agentId?: string) {
-    this.llmProvider = llmProvider;
+  constructor(homedirDir?: string, agentId?: string) {
     this.homedirDir = homedirDir;
     this.agentId = agentId || "zuckerman";
 
@@ -56,17 +54,10 @@ export class UnifiedMemoryManager implements MemoryManager {
 
 
   /**
-   * Set or update the LLM provider
-   */
-  setLLMProvider(provider: LLMProvider): void {
-    this.llmProvider = provider;
-  }
-
-  /**
    * Create a memory manager instance from homedir directory and agent ID
    */
-  static create(homedirDir: string, llmProvider?: LLMProvider, agentId?: string): UnifiedMemoryManager {
-    return new UnifiedMemoryManager(homedirDir, llmProvider, agentId);
+  static create(homedirDir: string, agentId?: string): UnifiedMemoryManager {
+    return new UnifiedMemoryManager(homedirDir, agentId);
   }
 
   /**
@@ -327,11 +318,51 @@ export class UnifiedMemoryManager implements MemoryManager {
   }
 
 
+  // ========== Memory Formatting for Prompts ==========
+
   /**
-   * Load and format memory for prompt injection
+   * Get relevant memories based on query and format for context injection
+   * Used during conversation turns to inject relevant memories into the prompt
+   */
+  async getRelevantMemoryContext(options: MemoryRetrievalOptions): Promise<string> {
+    const { memories } = await this.retrieveMemories(options);
+
+    if (memories.length === 0) {
+      // Debug: log why no memories were found
+      const semanticCount = this.semanticMemory.getAll().length;
+      const episodicCount = this.episodicMemory.getAll().length;
+      console.log(`[Memory] No memories found. Query: "${options.query}", Semantic: ${semanticCount}, Episodic: ${episodicCount}, Types: ${options.types?.join(", ") || "all"}`);
+      return "";
+    }
+
+    const memoryParts = memories.map((mem) => {
+      switch (mem.type) {
+        case "semantic": {
+          const s = mem as SemanticMemory;
+          const prefix = s.category ? `${s.category}: ` : "";
+          return `[Semantic] ${prefix}${s.fact}`;
+        }
+        case "episodic": {
+          const e = mem as EpisodicMemory;
+          return `[Episodic] ${e.event}: ${e.context.what}`;
+        }
+        case "procedural": {
+          const p = mem as ProceduralMemory;
+          return `[Procedural] ${p.pattern}: ${p.action}`;
+        }
+        default:
+          return `[${mem.type}] ${JSON.stringify(mem)}`;
+      }
+    });
+
+    return `\n\n## Retrieved Memories\n${memoryParts.join("\n")}`;
+  }
+
+  /**
+   * Get all semantic memories formatted for system prompt
    * Returns formatted memory string ready to be included in system prompt
    */
-  loadMemoryForPrompt(): string {
+  getSystemMemory(): string {
     if (!this.homedirDir) {
       throw new Error("Homedir directory not set");
     }
@@ -350,7 +381,6 @@ export class UnifiedMemoryManager implements MemoryManager {
       });
       parts.push(`## Semantic Memory\n\n${semanticParts.join("\n")}`);
     }
-
 
     return parts.length > 0 ? parts.join("\n\n---\n\n") : "";
   }
@@ -387,18 +417,14 @@ export class UnifiedMemoryManager implements MemoryManager {
    * This is called by the runtime when a new user message arrives
    */
   async onNewMessage(
+    llmProvider: LLMProvider,
     userMessage: string,
     conversationId?: string,
     conversationContext?: string
   ): Promise<void> {
-    if (!this.llmProvider) {
-      // No LLM provider available, skip extraction
-      throw new Error("LLM provider not set");
-    }
-
     try {
       const extractionResult = await extractMemoriesFromMessage(
-        this.llmProvider,
+        llmProvider,
         userMessage,
         conversationContext
       );
