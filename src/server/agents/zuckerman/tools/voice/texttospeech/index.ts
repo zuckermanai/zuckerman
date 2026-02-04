@@ -5,9 +5,8 @@
  */
 
 import { writeFile, mkdir } from "node:fs/promises";
-import { join } from "node:path";
-import { homedir } from "node:os";
 import { existsSync } from "node:fs";
+import { getAudioDir, getAudioFilePath } from "@server/world/homedir/paths.js";
 import { openaiTextToSpeech, type OpenAITextToSpeechOptions } from "@server/world/providers/tts/openai.js";
 import { elevenlabsTextToSpeech, type ElevenLabsTextToSpeechOptions } from "@server/world/providers/tts/elevenlabs.js";
 import { edgeTextToSpeech, type EdgeTextToSpeechOptions } from "@server/world/providers/tts/edge.js";
@@ -31,7 +30,7 @@ export interface TextToSpeechConvertResult {
   voiceCompatible?: boolean; // True if audio format is compatible with voice notes (e.g., Opus for Telegram)
 }
 
-const AUDIO_DIR = join(homedir(), ".zuckerman", "audio");
+const AUDIO_DIR = getAudioDir();
 
 // Channel-specific output formats
 const TELEGRAM_OUTPUT = {
@@ -175,7 +174,7 @@ export async function convertTextToSpeech(options: TextToSpeechConvertOptions): 
   // Save audio file
   const timestamp = Date.now();
   const filename = `text-to-speech-${timestamp}${outputConfig.extension}`;
-  const audioPath = join(AUDIO_DIR, filename);
+  const audioPath = getAudioFilePath(filename);
 
   try {
     await writeFile(audioPath, audioBuffer);

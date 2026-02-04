@@ -1,10 +1,9 @@
-import { join } from "node:path";
-import { homedir } from "node:os";
+import { getCalendarDir, getCalendarEventsFile } from "@server/world/homedir/paths.js";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import type { CalendarEvent } from "./types.js";
 
-const CALENDAR_DIR = join(homedir(), ".zuckerman", "calendar");
-const EVENTS_FILE = join(CALENDAR_DIR, "events.json");
+const CALENDAR_DIR = getCalendarDir();
+const EVENTS_FILE = getCalendarEventsFile();
 
 let events = new Map<string, CalendarEvent>();
 

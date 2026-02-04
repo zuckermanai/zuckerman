@@ -30,7 +30,7 @@ export interface AgentRunParams {
   thinkingLevel?: ThinkingLevel;
   temperature?: number;
   model?: LLMModel;
-  securityContext?: SecurityContext;
+  securityContext: SecurityContext;
   stream?: StreamCallback;
 }
 

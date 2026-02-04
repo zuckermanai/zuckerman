@@ -5,7 +5,8 @@
 
 import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname } from "node:path";
+import { getAgentMemoryStorePath } from "@server/world/homedir/paths.js";
 import type { SemanticMemory } from "../../types.js";
 
 export interface SemanticMemoryStorage {
@@ -16,8 +17,8 @@ export class SemanticMemoryStore {
   private memories = new Map<string, SemanticMemory>();
   private storagePath: string;
 
-  constructor(storageDir: string) {
-    this.storagePath = join(storageDir, "semantic.json");
+  constructor(agentId: string) {
+    this.storagePath = getAgentMemoryStorePath(agentId, "semantic");
     this.load();
   }
 
@@ -135,7 +136,7 @@ export class SemanticMemoryStore {
   private load(): void {
     if (!existsSync(this.storagePath)) {
       // Create directory if it doesn't exist
-      const dir = join(this.storagePath, "..");
+      const dir = dirname(this.storagePath);
       if (!existsSync(dir)) {
         mkdirSync(dir, { recursive: true });
       }
@@ -168,7 +169,7 @@ export class SemanticMemoryStore {
    */
   private save(): void {
     try {
-      const dir = join(this.storagePath, "..");
+      const dir = dirname(this.storagePath);
       if (!existsSync(dir)) {
         mkdirSync(dir, { recursive: true });
       }

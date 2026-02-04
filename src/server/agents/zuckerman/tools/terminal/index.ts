@@ -29,7 +29,7 @@ export interface ToolResult {
  */
 export interface ToolExecutionContext {
   conversationId: string;
-  homedirDir?: string; // Workspace/homedir directory (sandbox path when sandboxed)
+  homedirDir: string; // Workspace/homedir directory (sandbox path when sandboxed)
   stream?: (event: {
     type: "tool.call" | "tool.result";
     data: {
@@ -44,8 +44,8 @@ export interface Tool {
   definition: ToolDefinition;
   handler: (
     params: Record<string, unknown>,
-    securityContext?: SecurityContext,
-    executionContext?: ToolExecutionContext,
+    securityContext: SecurityContext,
+    executionContext: ToolExecutionContext,
   ) => Promise<ToolResult> | ToolResult;
 }
 

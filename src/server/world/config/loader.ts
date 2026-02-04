@@ -1,11 +1,14 @@
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { existsSync } from "node:fs";
-import { join, dirname } from "node:path";
-import { homedir } from "node:os";
+import { dirname } from "node:path";
 import type { ZuckermanConfig } from "./types.js";
+import { getConfigPath, getAgentWorkspaceDir, getZuckermanBaseDir } from "@server/world/homedir/paths.js";
 
-const CONFIG_PATH = join(homedir(), ".zuckerman", "config.json");
-const DEFAULT_HOMEDIR = join(homedir(), ".zuckerman", "homedir");
+// Re-export for backward compatibility
+export { getZuckermanBaseDir } from "@server/world/homedir/paths.js";
+
+const CONFIG_PATH = getConfigPath();
+const DEFAULT_WORKSPACE = getAgentWorkspaceDir("zuckerman");
 
 const defaultConfig: ZuckermanConfig = {
   gateway: {
@@ -18,11 +21,11 @@ const defaultConfig: ZuckermanConfig = {
       {
         id: "zuckerman",
         default: true,
-        homedir: DEFAULT_HOMEDIR,
+        homedir: DEFAULT_WORKSPACE,
       },
     ],
     defaults: {
-      homedir: DEFAULT_HOMEDIR,
+      homedir: DEFAULT_WORKSPACE,
     },
   },
   routing: {

@@ -57,8 +57,8 @@ export function setupIpcHandlers(): void {
 
   // Calendar events handlers
   ipcMain.handle("calendar:get-events", async () => {
-    const calendarDir = join(homedir(), ".zuckerman", "calendar");
-    const eventsFile = join(calendarDir, "events.json");
+    const { getCalendarEventsFile } = await import("@server/world/homedir/paths.js");
+    const eventsFile = getCalendarEventsFile();
     
     if (!existsSync(eventsFile)) {
       return { events: [] };
@@ -75,7 +75,8 @@ export function setupIpcHandlers(): void {
 
   // Reset data handler
   ipcMain.handle("reset:all-data", async () => {
-    const zuckermanDir = join(homedir(), ".zuckerman");
+    const { getBaseDir } = await import("@server/world/homedir/paths.js");
+    const zuckermanDir = getBaseDir();
     
     if (!existsSync(zuckermanDir)) {
       return { success: true, message: "No data to reset" };

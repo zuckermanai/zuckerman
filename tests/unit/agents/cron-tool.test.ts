@@ -2,11 +2,9 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { createCronTool } from "@agents/zuckerman/tools/cron/index.js";
 import type { SecurityContext } from "@world/security/types.js";
 import { readFileSync, existsSync, unlinkSync, mkdirSync } from "node:fs";
-import { join } from "node:path";
-import { homedir } from "node:os";
+import { getCalendarEventsFile } from "@server/world/homedir/paths.js";
 
-const CALENDAR_DIR = join(homedir(), ".zuckerman", "calendar");
-const EVENTS_FILE = join(CALENDAR_DIR, "events.json");
+const EVENTS_FILE = getCalendarEventsFile();
 
 describe("Cron Tool", () => {
   let tool: ReturnType<typeof createCronTool>;

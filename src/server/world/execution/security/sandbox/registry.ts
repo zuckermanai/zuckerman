@@ -1,9 +1,10 @@
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { existsSync } from "node:fs";
-import { join, dirname } from "node:path";
+import { dirname } from "node:path";
+import { getSandboxRegistryPath } from "@server/world/homedir/paths.js";
 import type { SandboxContext } from "../types.js";
 
-const REGISTRY_PATH = join(process.cwd(), ".zuckerman", "sandbox-registry.json");
+const REGISTRY_PATH = getSandboxRegistryPath();
 
 interface RegistryEntry {
   containerName: string;

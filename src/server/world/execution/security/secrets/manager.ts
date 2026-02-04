@@ -2,12 +2,12 @@ import { createCipheriv, createDecipheriv, randomBytes, scrypt } from "node:cryp
 import { promisify } from "node:util";
 import { readFile, writeFile, mkdir, unlink, readdir } from "node:fs/promises";
 import { existsSync } from "node:fs";
-import { join } from "node:path";
+import { getSecretsDir, getSecretsKeyFile, getSecretFile } from "@server/world/homedir/paths.js";
 import type { SecretConfig } from "../types.js";
 
 const scryptAsync = promisify(scrypt);
-const SECRETS_DIR = join(process.cwd(), ".zuckerman", "secrets");
-const KEY_FILE = join(SECRETS_DIR, ".key");
+const SECRETS_DIR = getSecretsDir();
+const KEY_FILE = getSecretsKeyFile();
 
 /**
  * Generate encryption key
@@ -95,7 +95,7 @@ export class SecretManager {
     }
 
     const encrypted = await encrypt(value, this.key);
-    const secretFile = join(SECRETS_DIR, `${key}.enc`);
+    const secretFile = getSecretFile(key);
     
     await mkdir(SECRETS_DIR, { recursive: true });
     await writeFile(secretFile, encrypted, { mode: 0o600 });
@@ -115,7 +115,7 @@ export class SecretManager {
       return null;
     }
 
-    const secretFile = join(SECRETS_DIR, `${key}.enc`);
+    const secretFile = getSecretFile(key);
     if (!existsSync(secretFile)) {
       return null;
     }
@@ -135,7 +135,7 @@ export class SecretManager {
    */
   async deleteSecret(key: string): Promise<void> {
     this.cache.delete(key);
-    const secretFile = join(SECRETS_DIR, `${key}.enc`);
+    const secretFile = getSecretFile(key);
     if (existsSync(secretFile)) {
       await unlink(secretFile);
     }

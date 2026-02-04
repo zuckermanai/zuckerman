@@ -5,7 +5,7 @@
 
 import { DatabaseSync } from "node:sqlite";
 import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { getWorkspaceFilePath } from "@server/world/homedir/paths.js";
 import type { ResolvedMemorySearchConfig } from "../config.js";
 import { parseEmbedding, cosineSimilarity } from "./encoding/embeddings.js";
 import { getDatabase, initializeDatabase } from "./db.js";
@@ -285,7 +285,7 @@ class MemorySearchManagerImpl implements MemorySearchManager {
     from?: number;
     lines?: number;
   }): Promise<{ text: string; path: string }> {
-    const filePath = join(this.workspaceDir, params.relPath);
+    const filePath = getWorkspaceFilePath(this.workspaceDir, params.relPath);
     
     if (!existsSync(filePath)) {
       throw new Error(`File not found: ${params.relPath}`);

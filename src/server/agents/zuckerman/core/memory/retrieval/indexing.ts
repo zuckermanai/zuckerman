@@ -5,10 +5,13 @@
 
 import { DatabaseSync } from "node:sqlite";
 import { readFileSync, existsSync, statSync } from "node:fs";
-import { join } from "node:path";
 import { createHash } from "node:crypto";
 import * as globModule from "glob";
 const glob = globModule.glob;
+import {
+  getWorkspaceMemoryDir,
+  getWorkspaceMemoryFilePath,
+} from "@server/world/homedir/paths.js";
 import type { ResolvedMemorySearchConfig } from "../config.js";
 import type { EmbeddingProvider } from "@server/world/providers/embeddings/index.js";
 import type { BaseMemory, EpisodicMemory, ProceduralMemory, ProspectiveMemory, EmotionalMemory, SemanticMemory } from "../types.js";
@@ -47,7 +50,7 @@ export class MemoryIndexerImpl implements MemoryIndexer {
       return;
     }
 
-    const memoryDir = join(this.workspaceDir, "memory");
+    const memoryDir = getWorkspaceMemoryDir(this.workspaceDir);
     if (!existsSync(memoryDir)) {
       return;
     }
@@ -67,7 +70,7 @@ export class MemoryIndexerImpl implements MemoryIndexer {
   }
 
   private loadMemoriesFromFile<T extends BaseMemory>(fileName: string): T[] {
-    const filePath = join(this.workspaceDir, "memory", fileName);
+    const filePath = getWorkspaceMemoryFilePath(this.workspaceDir, fileName);
     if (!existsSync(filePath)) {
       return [];
     }
@@ -92,7 +95,7 @@ export class MemoryIndexerImpl implements MemoryIndexer {
 
   private async syncMemoryFile(fileName: string, memories: BaseMemory[], force?: boolean): Promise<void> {
     const relPath = `memory/${fileName}`;
-    const absPath = join(this.workspaceDir, "memory", fileName);
+    const absPath = getWorkspaceMemoryFilePath(this.workspaceDir, fileName);
 
     // Check if file needs updating
     if (!force && existsSync(absPath)) {

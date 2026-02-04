@@ -5,7 +5,8 @@
 
 import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname } from "node:path";
+import { getAgentMemoryStorePath } from "@server/world/homedir/paths.js";
 import type { ProceduralMemory } from "../../types.js";
 
 export interface ProceduralMemoryStorage {
@@ -16,8 +17,8 @@ export class ProceduralMemoryStore {
   private memories = new Map<string, ProceduralMemory>();
   private storagePath: string;
 
-  constructor(storageDir: string) {
-    this.storagePath = join(storageDir, "procedural.json");
+  constructor(agentId: string) {
+    this.storagePath = getAgentMemoryStorePath(agentId, "procedural");
     this.load();
   }
 
@@ -176,7 +177,7 @@ export class ProceduralMemoryStore {
    */
   private save(): void {
     try {
-      const dir = join(this.storagePath, "..");
+      const dir = dirname(this.storagePath);
       if (!existsSync(dir)) {
         mkdirSync(dir, { recursive: true });
       }

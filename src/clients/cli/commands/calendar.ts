@@ -1,11 +1,9 @@
 import { Command } from "commander";
 import { outputJson, shouldOutputJson } from "../utils/json-output.js";
-import { join } from "node:path";
-import { homedir } from "node:os";
+import { getCalendarEventsFile } from "@server/world/homedir/paths.js";
 import { existsSync, readFileSync } from "node:fs";
 
-const CALENDAR_DIR = join(homedir(), ".zuckerman", "calendar");
-const EVENTS_FILE = join(CALENDAR_DIR, "events.json");
+const EVENTS_FILE = getCalendarEventsFile();
 
 interface CalendarEvent {
   id: string;

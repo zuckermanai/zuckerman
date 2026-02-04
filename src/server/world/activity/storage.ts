@@ -1,15 +1,15 @@
 import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync } from "node:fs";
-import { join, dirname } from "node:path";
-import { homedir } from "node:os";
+import { dirname } from "node:path";
+import { getActivitiesDir, getActivityFilePath as getActivityFilePathFromPaths } from "@server/world/homedir/paths.js";
 import type { Activity, ActivityQuery } from "./types.js";
 
-const ACTIVITIES_DIR = join(homedir(), ".zuckerman", "activities");
+const ACTIVITIES_DIR = getActivitiesDir();
 
 /**
  * Get the file path for activities on a specific date
  */
 function getActivityFilePath(date: string): string {
-  return join(ACTIVITIES_DIR, `${date}.jsonl`);
+  return getActivityFilePathFromPaths(date);
 }
 
 /**

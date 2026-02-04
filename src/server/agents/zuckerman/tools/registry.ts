@@ -52,6 +52,18 @@ export class ZuckermanToolRegistry {
             error: `Tool "${toolName}" not found`,
           };
         }
+        if (!securityContext) {
+          return {
+            success: false,
+            error: `Security context is required to execute tool "${toolName}"`,
+          };
+        }
+        if (!executionContext) {
+          return {
+            success: false,
+            error: `Execution context is required to execute tool "${toolName}"`,
+          };
+        }
         return await tool.handler(params, securityContext, executionContext);
       },
       getAvailableTools: () => {

@@ -10,13 +10,12 @@ import {
 } from "@whiskeysockets/baileys";
 import type { Channel, ChannelMessage } from "./types.js";
 import type { WhatsAppConfig } from "@server/world/config/types.js";
-import { join } from "node:path";
 import { existsSync, mkdirSync, rmSync } from "node:fs";
-import { homedir } from "node:os";
+import { getWhatsAppAuthDir } from "@server/world/homedir/paths.js";
 import pino from "pino";
 import qrcodeTerminal from "qrcode-terminal";
 
-const AUTH_DIR = join(homedir(), ".zuckerman", "credentials", "whatsapp");
+const AUTH_DIR = getWhatsAppAuthDir();
 
 enum ChannelState {
   IDLE = "idle",

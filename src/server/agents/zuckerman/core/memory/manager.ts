@@ -3,7 +3,6 @@
  * Coordinates all memory types and provides unified interface
  */
 
-import { join } from "node:path";
 import { WorkingMemoryStore } from "./stores/working/index.js";
 import { EpisodicMemoryStore } from "./stores/episodic/index.js";
 import { SemanticMemoryStore } from "./stores/semantic/index.js";
@@ -38,28 +37,21 @@ export class UnifiedMemoryManager implements MemoryManager {
   private emotionalMemory: EmotionalMemoryStore;
 
   private homedirDir?: string;
+  private agentId?: string;
   private llmProvider?: LLMProvider;
   private dbInitialized: boolean = false;
 
-  constructor(homedirDir?: string, llmProvider?: LLMProvider) {
+  constructor(homedirDir?: string, llmProvider?: LLMProvider, agentId?: string) {
     this.llmProvider = llmProvider;
-
     this.homedirDir = homedirDir;
-    const memoryDir = this.resolveMemoryDir(homedirDir!);
+    this.agentId = agentId || "zuckerman";
 
     this.workingMemory = new WorkingMemoryStore();
-    this.episodicMemory = new EpisodicMemoryStore(memoryDir);
-    this.semanticMemory = new SemanticMemoryStore(memoryDir);
-    this.proceduralMemory = new ProceduralMemoryStore(memoryDir);
-    this.prospectiveMemory = new ProspectiveMemoryStore(memoryDir);
-    this.emotionalMemory = new EmotionalMemoryStore(memoryDir);
-  }
-
-  /**
- * Resolve memory directory path
- */
-  resolveMemoryDir(homedirDir: string): string {
-    return join(homedirDir, "memory");
+    this.episodicMemory = new EpisodicMemoryStore(this.agentId);
+    this.semanticMemory = new SemanticMemoryStore(this.agentId);
+    this.proceduralMemory = new ProceduralMemoryStore(this.agentId);
+    this.prospectiveMemory = new ProspectiveMemoryStore(this.agentId);
+    this.emotionalMemory = new EmotionalMemoryStore(this.agentId);
   }
 
 
@@ -71,11 +63,10 @@ export class UnifiedMemoryManager implements MemoryManager {
   }
 
   /**
-   * Create a memory manager instance from homedir directory
-   * This is a convenience method to avoid direct use of resolveMemoryDir
+   * Create a memory manager instance from homedir directory and agent ID
    */
-  static create(homedirDir: string, llmProvider?: LLMProvider): UnifiedMemoryManager {
-    return new UnifiedMemoryManager(homedirDir, llmProvider);
+  static create(homedirDir: string, llmProvider?: LLMProvider, agentId?: string): UnifiedMemoryManager {
+    return new UnifiedMemoryManager(homedirDir, llmProvider, agentId);
   }
 
   /**

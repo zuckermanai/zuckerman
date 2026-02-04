@@ -1,11 +1,11 @@
 import { createInterface } from "node:readline";
 import { GatewayClient } from "./gateway-client.js";
-import { join } from "node:path";
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { existsSync } from "node:fs";
+import { getCliConversationFile, getBaseDir } from "@server/world/homedir/paths.js";
 import { ensureGatewayRunning, getGatewayServer } from "./gateway-utils.js";
 
-const CONVERSATION_FILE = join(process.cwd(), ".zuckerman", "cli-conversation.json");
+const CONVERSATION_FILE = getCliConversationFile();
 
 interface ConversationData {
   conversationId: string;
@@ -26,7 +26,7 @@ async function loadConversation(): Promise<ConversationData | null> {
 
 async function saveConversation(conversation: ConversationData): Promise<void> {
   try {
-    const dir = join(process.cwd(), ".zuckerman");
+    const dir = getBaseDir();
     if (!existsSync(dir)) {
       await mkdir(dir, { recursive: true });
     }

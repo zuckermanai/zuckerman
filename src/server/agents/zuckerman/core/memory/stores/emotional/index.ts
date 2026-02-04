@@ -5,7 +5,8 @@
 
 import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname } from "node:path";
+import { getAgentMemoryStorePath } from "@server/world/homedir/paths.js";
 import type { EmotionalMemory, EmotionType, EmotionIntensity } from "../../types.js";
 
 export interface EmotionalMemoryStorage {
@@ -16,8 +17,8 @@ export class EmotionalMemoryStore {
   private memories = new Map<string, EmotionalMemory>();
   private storagePath: string;
 
-  constructor(storageDir: string) {
-    this.storagePath = join(storageDir, "emotional.json");
+  constructor(agentId: string) {
+    this.storagePath = getAgentMemoryStorePath(agentId, "emotional");
     this.load();
   }
 
@@ -145,7 +146,7 @@ export class EmotionalMemoryStore {
    */
   private save(): void {
     try {
-      const dir = join(this.storagePath, "..");
+      const dir = dirname(this.storagePath);
       if (!existsSync(dir)) {
         mkdirSync(dir, { recursive: true });
       }

@@ -1,9 +1,6 @@
 import type { Tool } from "../terminal/index.js";
-import type { ToolExecutionContext } from "../terminal/index.js";
-import { loadConfig } from "@server/world/config/index.js";
-import { resolveAgentHomedirDir } from "@server/world/homedir/resolver.js";
-import { resolveMemorySearchConfig } from "@server/agents/zuckerman/core/memory/config.js";
-import { getMemorySearchManager } from "@server/agents/zuckerman/core/memory/retrieval/search.js";
+import { UnifiedMemoryManager } from "@server/agents/zuckerman/core/memory/manager.js";
+import type { MemoryType } from "@server/agents/zuckerman/core/memory/types.js";
 
 /**
  * Create memory search tool
@@ -13,7 +10,7 @@ export function createMemorySearchTool(): Tool {
     definition: {
       name: "memory_search",
       description:
-        "Semantically search MEMORY.md and memory/*.md files (and optional conversation transcripts) for relevant information. ALWAYS use this tool when asked about personal information (name, preferences, facts about the user), prior work, decisions, dates, people, preferences, or todos. Even if you think you know the answer, search memory first to ensure accuracy. Returns top snippets with path and line numbers.",
+        "Search across all memory types (working, episodic, semantic, procedural, prospective, emotional) for relevant information. ALWAYS use this tool when asked about personal information (name, preferences, facts about the user), prior work, decisions, dates, people, preferences, or todos. Even if you think you know the answer, search memory first to ensure accuracy. Returns structured memories with their types and metadata.",
       parameters: {
         type: "object",
         properties: {
@@ -21,20 +18,29 @@ export function createMemorySearchTool(): Tool {
             type: "string",
             description: "Search query - describe what you're looking for in natural language",
           },
-          maxResults: {
-            type: "number",
-            description: "Maximum number of results to return (default: 6)",
+          types: {
+            type: "array",
+            description: "Memory types to search (working, episodic, semantic, procedural, prospective, emotional).",
+            items: {
+              type: "string",
+              enum: ["working", "episodic", "semantic", "procedural", "prospective", "emotional"],
+            } as { type: "string"; enum: string[] },
           },
-          minScore: {
+          limit: {
             type: "number",
-            description: "Minimum relevance score (0-1, default: 0.35)",
+            description: "Maximum number of results to return (default: 20)",
+          },
+          maxAge: {
+            type: "number",
+            description: "Maximum age of memories in milliseconds (optional)",
           },
         },
-        required: ["query"],
+        required: ["query", "types"],
       },
     },
-    handler: async (params, _securityContext, executionContext) => {
+    handler: async (params, securityContext, executionContext) => {
       try {
+        console.log("memory_search", params);
         const query = params.query as string;
         if (!query || typeof query !== "string") {
           return {
@@ -43,67 +49,37 @@ export function createMemorySearchTool(): Tool {
           };
         }
 
-        const config = await loadConfig();
-        const agentId = "zuckerman";
-        const homedirDir = executionContext?.homedirDir || resolveAgentHomedirDir(config, agentId);
-        const memoryConfig = resolveMemorySearchConfig(
-          config.agent?.memorySearch || {},
-          homedirDir,
-          agentId,
-        );
+        const agentId = securityContext.agentId;
+        const homedirDir = executionContext.homedirDir;
+        const conversationId = executionContext.conversationId;
 
-        if (!memoryConfig) {
-          return {
-            success: false,
-            error: "Memory search is not enabled",
-            result: { results: [], disabled: true },
-          };
-        }
+        const memoryManager = UnifiedMemoryManager.create(homedirDir, undefined, agentId);
 
-        const { manager, error } = await getMemorySearchManager({
-          config: memoryConfig,
-          workspaceDir: homedirDir,
-          agentId,
+        const types = params.types as MemoryType[] | undefined;
+        const limit = typeof params.limit === "number" ? params.limit : 20;
+        const maxAge = typeof params.maxAge === "number" ? params.maxAge : undefined;
+
+        const result = await memoryManager.retrieveMemories({
+          query,
+          types,
+          limit,
+          maxAge,
+          conversationId,
         });
-
-        if (!manager) {
-          return {
-            success: false,
-            error: error || "Memory search manager not available",
-            result: { results: [], disabled: true, error },
-          };
-        }
-
-        const maxResults = typeof params.maxResults === "number" ? params.maxResults : undefined;
-        const minScore = typeof params.minScore === "number" ? params.minScore : undefined;
-
-        const results = await manager.search(query, {
-          maxResults,
-          minScore,
-          conversationKey: executionContext?.conversationId,
-        });
-
-        const status = manager.status();
 
         return {
           success: true,
           result: {
-            results,
-            provider: status.provider,
-            model: status.model,
-            totalFiles: status.files,
-            totalChunks: status.chunks,
-            dbInitialized: status.dbInitialized,
-            dbExists: status.dbExists,
-            dbPath: status.dbPath,
-            ...(status.dbError ? { dbError: status.dbError } : {}),
+            memories: result.memories,
+            total: result.total,
+            returned: result.memories.length,
           },
         };
       } catch (error) {
         return {
           success: false,
           error: error instanceof Error ? error.message : String(error),
-          result: { results: [], disabled: true },
+          result: { memories: [], total: 0, returned: 0 },
         };
       }
     },
@@ -118,85 +94,88 @@ export function createMemoryGetTool(): Tool {
     definition: {
       name: "memory_get",
       description:
-        "Read a specific file or section from MEMORY.md, memory/*.md, or configured memory paths. Use this after memory_search to read only the needed lines and keep context small. Supports reading specific line ranges.",
+        "Retrieve specific memory types or memories by type. Use this after memory_search to get detailed information about specific memory types (semantic, episodic, procedural, prospective, emotional). Returns structured memories from JSON stores.",
       parameters: {
         type: "object",
         properties: {
-          path: {
+          type: {
             type: "string",
-            description: "Relative path to memory file (e.g., 'MEMORY.md', 'memory/2024-01-15.md')",
+            description: "Memory type to retrieve (semantic, episodic, procedural, prospective, emotional)",
+            enum: ["semantic", "episodic", "procedural", "prospective", "emotional"],
           },
-          from: {
+          limit: {
             type: "number",
-            description: "Start line number (1-indexed, optional)",
+            description: "Maximum number of results to return (optional)",
           },
-          lines: {
-            type: "number",
-            description: "Number of lines to read (optional, reads entire file if not specified)",
+          conversationId: {
+            type: "string",
+            description: "Filter by conversation ID (optional)",
           },
         },
-        required: ["path"],
+        required: ["type"],
       },
     },
-    handler: async (params, _securityContext, executionContext) => {
+    handler: async (params, securityContext, executionContext) => {
       try {
-        const relPath = params.path as string;
-        if (!relPath || typeof relPath !== "string") {
+        const memoryType = params.type as MemoryType;
+        if (!memoryType || typeof memoryType !== "string") {
           return {
             success: false,
-            error: "Path parameter is required and must be a string",
+            error: "Type parameter is required and must be a valid memory type",
           };
         }
 
-        const config = await loadConfig();
-        const agentId = "zuckerman";
-        const homedirDir = executionContext?.homedirDir || resolveAgentHomedirDir(config, agentId);
-        const memoryConfig = resolveMemorySearchConfig(
-          config.agent?.memorySearch || {},
-          homedirDir,
-          agentId,
-        );
+        const agentId = securityContext.agentId;
+        const homedirDir = executionContext.homedirDir;
+        const conversationId = params.conversationId as string | undefined || executionContext.conversationId;
+        const limit = typeof params.limit === "number" ? params.limit : undefined;
 
-        if (!memoryConfig) {
-          return {
-            success: false,
-            error: "Memory search is not enabled",
-            result: { path: relPath, text: "", disabled: true },
-          };
+        const memoryManager = UnifiedMemoryManager.create(homedirDir, undefined, agentId);
+
+        let memories: unknown[] = [];
+
+        switch (memoryType) {
+          case "semantic":
+            memories = await memoryManager.getSemanticMemories({ conversationId, limit, query: undefined });
+            break;
+          case "episodic":
+            memories = await memoryManager.getEpisodicMemories({ conversationId, limit });
+            break;
+          case "procedural":
+            memories = await memoryManager.getProceduralMemories();
+            if (limit) {
+              memories = memories.slice(0, limit);
+            }
+            break;
+          case "prospective":
+            memories = await memoryManager.getProspectiveMemories({ conversationId, limit });
+            break;
+          case "emotional":
+            memories = await memoryManager.getEmotionalMemories();
+            if (limit) {
+              memories = memories.slice(0, limit);
+            }
+            break;
+          default:
+            return {
+              success: false,
+              error: `Invalid memory type: ${memoryType}`,
+            };
         }
-
-        const { manager, error } = await getMemorySearchManager({
-          config: memoryConfig,
-          workspaceDir: homedirDir,
-          agentId,
-        });
-
-        if (!manager) {
-          return {
-            success: false,
-            error: error || "Memory search manager not available",
-            result: { path: relPath, text: "", disabled: true, error },
-          };
-        }
-
-        const from = typeof params.from === "number" ? params.from : undefined;
-        const lines = typeof params.lines === "number" ? params.lines : undefined;
-
-        const result = await manager.readFile({
-          relPath,
-          from,
-          lines,
-        });
 
         return {
           success: true,
-          result,
+          result: {
+            type: memoryType,
+            memories,
+            count: memories.length,
+          },
         };
       } catch (error) {
         return {
           success: false,
           error: error instanceof Error ? error.message : String(error),
-          result: { path: params.path as string, text: "", disabled: true },
+          result: { type: params.type as string, memories: [], count: 0 },
         };
       }
     },

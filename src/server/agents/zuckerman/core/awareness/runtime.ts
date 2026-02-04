@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { AgentRuntime, AgentRunParams, AgentRunResult, StreamCallback } from "@server/world/runtime/agents/types.js";
 import type { LLMMessage, LLMTool, LLMModel } from "@server/world/providers/llm/types.js";
 import type { ConversationId } from "@server/agents/zuckerman/conversations/types.js";
+import type { SecurityContext } from "@server/world/execution/security/types.js";
 import { loadConfig } from "@server/world/config/index.js";
 import { ConversationManager } from "@server/agents/zuckerman/conversations/index.js";
 import { ZuckermanToolRegistry } from "@server/agents/zuckerman/tools/registry.js";
@@ -53,7 +54,7 @@ export class ZuckermanAwareness implements AgentRuntime {
    */
   private initializeMemoryManager(homedirDir: string, provider?: any): void {
     if (!this.memoryManager) {
-      this.memoryManager = UnifiedMemoryManager.create(homedirDir, provider);
+      this.memoryManager = UnifiedMemoryManager.create(homedirDir, provider, this.agentId);
     } else if (provider) {
       // Update provider if manager already exists
       this.memoryManager.setLLMProvider(provider);
@@ -185,7 +186,6 @@ export class ZuckermanAwareness implements AgentRuntime {
       // Load prompts
       const prompts = await this.loadPrompts();
       
-      // Build system prompt - this will reload semantic memory from MEMORY.md on every message
       // ensuring we always have the latest semantic memories
       const systemPrompt = await this.buildSystemPrompt(prompts, homedirDir);
 
@@ -254,7 +254,6 @@ export class ZuckermanAwareness implements AgentRuntime {
       messages.push({ role: "user", content: message });
 
       // Process new message for memory extraction (real-time)
-      // This may add new semantic memories to MEMORY.md
       // Note: Semantic memory is reloaded on every message in buildSystemPrompt(),
       // so new memories added here will be available on the next message
       try {
@@ -472,12 +471,12 @@ export class ZuckermanAwareness implements AgentRuntime {
     runId: string;
     messages: LLMMessage[];
     toolCalls: any[];
-    securityContext?: any;
+    securityContext: SecurityContext;
     stream?: StreamCallback;
     model?: LLMModel;
     temperature?: number;
     llmTools: LLMTool[];
-    homedirDir?: string;
+    homedirDir: string;
   }): Promise<AgentRunResult> {
     const { conversationId, runId, messages, toolCalls, securityContext, stream, model, temperature, llmTools, homedirDir } = params;
     

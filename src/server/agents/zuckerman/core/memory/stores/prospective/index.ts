@@ -5,7 +5,8 @@
 
 import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname } from "node:path";
+import { getAgentMemoryStorePath } from "@server/world/homedir/paths.js";
 import type { ProspectiveMemory } from "../../types.js";
 
 export interface ProspectiveMemoryStorage {
@@ -16,8 +17,8 @@ export class ProspectiveMemoryStore {
   private memories = new Map<string, ProspectiveMemory>();
   private storagePath: string;
 
-  constructor(storageDir: string) {
-    this.storagePath = join(storageDir, "prospective.json");
+  constructor(agentId: string) {
+    this.storagePath = getAgentMemoryStorePath(agentId, "prospective");
     this.load();
   }
 
@@ -209,7 +210,7 @@ export class ProspectiveMemoryStore {
    */
   private save(): void {
     try {
-      const dir = join(this.storagePath, "..");
+      const dir = dirname(this.storagePath);
       if (!existsSync(dir)) {
         mkdirSync(dir, { recursive: true });
       }

@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
-import { homedir } from "node:os";
+import { getBaseDir } from "@server/world/homedir/paths.js";
 import type {
   Conversation,
   ConversationId,
@@ -49,7 +49,7 @@ export class ConversationManager {
 
   constructor(agentId: string, stateDir?: string) {
     this.agentId = agentId;
-    this.stateDir = stateDir || join(homedir(), ".zuckerman");
+    this.stateDir = stateDir || getBaseDir();
     this.storePath = resolveConversationStorePath(agentId, this.stateDir);
     this.loadConversations();
   }

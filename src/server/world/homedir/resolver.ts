@@ -1,12 +1,15 @@
-import { join } from "node:path";
 import { homedir } from "node:os";
 import { existsSync, mkdirSync } from "node:fs";
 import type { ZuckermanConfig } from "@server/world/config/types.js";
+import { getAgentWorkspaceDir } from "./paths.js";
 
 /**
- * Default homedir directory
+ * Default workspace directory for agents
+ * @deprecated Use getAgentWorkspaceDir from paths.js instead
  */
-export const DEFAULT_HOMEDIR_DIR = join(homedir(), ".zuckerman", "homedir");
+export function getDefaultWorkspaceDir(agentId: string): string {
+  return getAgentWorkspaceDir(agentId);
+}
 
 /**
  * Resolve homedir directory for an agent
@@ -23,18 +26,18 @@ export function resolveAgentHomedirDir(
     return expandPath(agent.homedir);
   }
 
-  // Use default homedir
-  const defaultHomedir = config.agents?.defaults?.homedir || DEFAULT_HOMEDIR_DIR;
-  const expandedDefault = expandPath(defaultHomedir);
+  // Use default workspace
+  const defaultWorkspace = config.agents?.defaults?.homedir || getDefaultWorkspaceDir(agentId);
+  const expandedDefault = expandPath(defaultWorkspace);
 
-  // If it's the default agent, use homedir as-is
+  // If it's the default agent, use workspace as-is
   const defaultAgent = agents.find((a) => a.default) || agents[0];
   if (agentId === defaultAgent?.id) {
     return expandedDefault;
   }
 
-  // Otherwise append agent ID
-  return `${expandedDefault}-${agentId}`;
+  // Otherwise use agent-specific workspace
+  return getDefaultWorkspaceDir(agentId);
 }
 
 /**

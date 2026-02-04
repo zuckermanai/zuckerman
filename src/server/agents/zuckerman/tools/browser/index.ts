@@ -3,12 +3,17 @@ import type { SecurityContext } from "@server/world/execution/security/types.js"
 import { isToolAllowed } from "@server/world/execution/security/policy/tool-policy.js";
 import type { Tool, ToolDefinition, ToolResult } from "../terminal/index.js";
 import { join, dirname } from "node:path";
-import { homedir } from "node:os";
+import {
+  getBrowserDataDir,
+  getAgentWorkspaceDir,
+  getWorkspaceScreenshotsDir,
+  getWorkspaceScreenshotPath,
+} from "@server/world/homedir/paths.js";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { exec } from "node:child_process";
 import { promisify } from "node:util";
 
-const BROWSER_DATA_DIR = join(homedir(), ".zuckerman", "browser");
+const BROWSER_DATA_DIR = getBrowserDataDir();
 
 // Browser manager to maintain a single browser instance across calls
 class BrowserManager {
@@ -297,19 +302,18 @@ export function createBrowserTool(): Tool {
               let savePath: string;
               if (typeof params.savePath === "string" && params.savePath) {
                 // Expand ~ in user-provided path
-                savePath = params.savePath.startsWith("~") 
-                  ? params.savePath.replace("~", homedir())
-                  : params.savePath;
+                savePath = params.savePath;
               } else {
-                // Default: save to homedir/screenshots/ (use sandbox path if available)
-                const homedirDir = executionContext?.homedirDir || join(homedir(), ".zuckerman", "homedir");
-                const screenshotsDir = join(homedirDir, "screenshots");
+                // Default: save to workspace/screenshots/
+                const workspaceDir = getAgentWorkspaceDir(securityContext!.agentId);
+                const screenshotsDir = getWorkspaceScreenshotsDir(workspaceDir);
                 if (!existsSync(screenshotsDir)) {
                   mkdirSync(screenshotsDir, { recursive: true });
                 }
                 const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
                 const urlSlug = page.url().replace(/[^a-zA-Z0-9]/g, "-").substring(0, 50);
-                savePath = join(screenshotsDir, `screenshot-${timestamp}-${urlSlug}.png`);
+                const filename = `screenshot-${timestamp}-${urlSlug}.png`;
+                savePath = getWorkspaceScreenshotPath(workspaceDir, filename);
               }
               
               // Ensure directory exists

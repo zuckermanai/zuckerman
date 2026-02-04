@@ -1,6 +1,9 @@
 import { existsSync, appendFileSync, readFileSync, mkdirSync } from "node:fs";
-import { join, dirname } from "node:path";
-import { homedir } from "node:os";
+import { dirname } from "node:path";
+import {
+  getAgentConversationTranscriptPath,
+  resolveConversationTranscriptPathWithStateDir,
+} from "@server/world/homedir/paths.js";
 import type { TranscriptEntry, ConversationId } from "./types.js";
 
 /**
@@ -11,8 +14,11 @@ export function resolveTranscriptPath(
   conversationId: ConversationId,
   stateDir?: string,
 ): string {
-  const baseDir = stateDir || join(homedir(), ".zuckerman");
-  return join(baseDir, "agents", agentId, "conversations", `${conversationId}.jsonl`);
+  // If stateDir is provided, use it; otherwise use the standard path
+  if (stateDir) {
+    return resolveConversationTranscriptPathWithStateDir(stateDir, agentId, conversationId);
+  }
+  return getAgentConversationTranscriptPath(agentId, conversationId);
 }
 
 /**

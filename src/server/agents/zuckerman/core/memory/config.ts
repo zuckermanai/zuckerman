@@ -3,6 +3,8 @@
  * Based on OpenClaw's memory search configuration
  */
 
+import { getAgentMemoryDbPath } from "@server/world/homedir/paths.js";
+
 export type MemorySource = "memory" | "conversations";
 
 export type MemorySearchConfig = {
@@ -216,7 +218,8 @@ export function resolveMemorySearchConfig(
     enabled: config.store?.vector?.enabled ?? true,
     extensionPath: config.store?.vector?.extensionPath,
   };
-  const storePath = config.store?.path ?? `${workspaceDir}/.memory/${agentId}.sqlite`;
+  // Default path: .zuckerman/agents/{agentId}/memory/{agentId}.sqlite
+  const storePath = config.store?.path ?? getAgentMemoryDbPath(agentId);
   const store = {
     driver: "sqlite" as const,
     path: storePath,

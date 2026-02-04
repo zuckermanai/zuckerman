@@ -1,6 +1,9 @@
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
-import { join, dirname } from "node:path";
-import { homedir } from "node:os";
+import { dirname } from "node:path";
+import {
+  getAgentConversationStorePath,
+  resolveConversationStorePathWithStateDir,
+} from "@server/world/homedir/paths.js";
 import type { ConversationEntry, ConversationKey } from "./types.js";
 
 const DEFAULT_CONVERSATION_STORE_TTL_MS = 45_000; // 45 seconds
@@ -43,8 +46,11 @@ function getFileMtimeMs(filePath: string): number | undefined {
  * Resolve conversation store path for an agent
  */
 export function resolveConversationStorePath(agentId: string, stateDir?: string): string {
-  const baseDir = stateDir || join(homedir(), ".zuckerman");
-  return join(baseDir, "agents", agentId, "conversations", "conversations.json");
+  // If stateDir is provided, use it; otherwise use the standard path
+  if (stateDir) {
+    return resolveConversationStorePathWithStateDir(stateDir, agentId);
+  }
+  return getAgentConversationStorePath(agentId);
 }
 
 /**

@@ -1,7 +1,6 @@
 import { Command } from "commander";
 import { rmSync, existsSync } from "node:fs";
-import { join } from "node:path";
-import { homedir } from "node:os";
+import { getBaseDir } from "@server/world/homedir/paths.js";
 import { createInterface } from "node:readline";
 
 export function createResetCommand(): Command {
@@ -9,7 +8,7 @@ export function createResetCommand(): Command {
     .description("Reset all Zuckerman data (conversations, config, agents, etc.)")
     .option("-y, --yes", "Skip confirmation prompt")
     .action(async (options: { yes?: boolean }) => {
-      const zuckermanDir = join(homedir(), ".zuckerman");
+      const zuckermanDir = getBaseDir();
       
       if (!existsSync(zuckermanDir)) {
         console.log("✓ No data to reset - .zuckerman directory does not exist");

@@ -5,7 +5,8 @@
 
 import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync, appendFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname } from "node:path";
+import { getAgentMemoryStorePath } from "@server/world/homedir/paths.js";
 import type { EpisodicMemory, EmotionalTag } from "../../types.js";
 
 export interface EpisodicMemoryStorage {
@@ -16,8 +17,8 @@ export class EpisodicMemoryStore {
   private memories = new Map<string, EpisodicMemory>();
   private storagePath: string;
 
-  constructor(storageDir: string) {
-    this.storagePath = join(storageDir, "episodic.json");
+  constructor(agentId: string) {
+    this.storagePath = getAgentMemoryStorePath(agentId, "episodic");
     this.load();
   }
 
@@ -157,7 +158,7 @@ export class EpisodicMemoryStore {
    */
   private save(): void {
     try {
-      const dir = join(this.storagePath, "..");
+      const dir = dirname(this.storagePath);
       if (!existsSync(dir)) {
         mkdirSync(dir, { recursive: true });
       }
