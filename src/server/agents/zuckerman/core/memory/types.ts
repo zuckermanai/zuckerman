@@ -161,7 +161,6 @@ export interface MemoryManager {
   
   // Memory formatting for prompts
   getRelevantMemoryContext(options: MemoryRetrievalOptions): Promise<string>;
-  getSystemMemory(): string;
   
   // Cleanup
   cleanup(): Promise<void>;

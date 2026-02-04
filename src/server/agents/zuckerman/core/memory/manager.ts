@@ -358,32 +358,6 @@ export class UnifiedMemoryManager implements MemoryManager {
     return `\n\n## Retrieved Memories\n${memoryParts.join("\n")}`;
   }
 
-  /**
-   * Get all semantic memories formatted for system prompt
-   * Returns formatted memory string ready to be included in system prompt
-   */
-  getSystemMemory(): string {
-    if (!this.homedirDir) {
-      throw new Error("Homedir directory not set");
-    }
-
-    const parts: string[] = [];
-
-    // Load semantic memories from JSON store
-    const semanticMemories = this.semanticMemory.getAll();
-    if (semanticMemories.length > 0) {
-      const semanticParts = semanticMemories.map(mem => {
-        let formatted = mem.fact;
-        if (mem.category) {
-          formatted = `${mem.category}: ${formatted}`;
-        }
-        return `- ${formatted}`;
-      });
-      parts.push(`## Semantic Memory\n\n${semanticParts.join("\n")}`);
-    }
-
-    return parts.length > 0 ? parts.join("\n\n---\n\n") : "";
-  }
 
   // ========== Sleep Mode Integration ==========
 

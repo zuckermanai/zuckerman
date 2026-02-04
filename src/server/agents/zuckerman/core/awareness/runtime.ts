@@ -105,15 +105,6 @@ export class ZuckermanAwareness implements AgentRuntime {
     const basePrompt = this.promptLoader.buildSystemPrompt(prompts);
     const parts: string[] = [basePrompt];
     
-    // Reload and add memory on every call to ensure we have the latest semantic memory
-    // This ensures any semantic memories added during message processing are included
-    if (homedirDir && this.memoryManager) {
-      // Always reload from files to get the latest semantic memory updates
-      const memorySection = this.memoryManager.getSystemMemory();
-      if (memorySection) {
-        parts.push(memorySection);
-      }
-    }
     
     // Add tool information to system prompt
     const tools = this.toolRegistry.list();
