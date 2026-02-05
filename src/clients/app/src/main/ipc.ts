@@ -1,4 +1,4 @@
-import { ipcMain, app } from "electron";
+import { ipcMain, app, shell } from "electron";
 import { startGateway, stopGateway, getGatewayStatus, cleanupGateway, getGatewayLogs, clearGatewayLogs } from "@core/gateway/gateway-manager.js";
 import { getApiKeys, saveApiKeys } from "@main/env-manager.js";
 import { join } from "node:path";
@@ -89,6 +89,19 @@ export function setupIpcHandlers(): void {
       return { 
         success: false, 
         error: error instanceof Error ? error.message : "Failed to reset data" 
+      };
+    }
+  });
+
+  // Open external URL handler
+  ipcMain.handle("shell:open-external", async (_, url: string) => {
+    try {
+      await shell.openExternal(url);
+      return { success: true };
+    } catch (error) {
+      return { 
+        success: false, 
+        error: error instanceof Error ? error.message : "Failed to open URL" 
       };
     }
   });

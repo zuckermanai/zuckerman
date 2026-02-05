@@ -68,7 +68,43 @@ export function MessageItem({ message, agentId, isSending }: MessageItemProps) {
               h1: ({ children }) => <h1 className="text-xl font-bold mb-2 mt-4 first:mt-0">{children}</h1>,
               h2: ({ children }) => <h2 className="text-lg font-bold mb-2 mt-4 first:mt-0">{children}</h2>,
               h3: ({ children }) => <h3 className="text-base font-bold mb-2 mt-4 first:mt-0">{children}</h3>,
-              a: ({ children, href }) => <a href={href} className="text-primary underline hover:text-primary/80" target="_blank" rel="noopener noreferrer">{children}</a>,
+              a: ({ children, href, node, ...props }) => {
+                if (!href) {
+                  return <span className="text-primary underline">{children}</span>;
+                }
+                const handleClick = async (e: React.MouseEvent<HTMLAnchorElement>) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  if (href) {
+                    // Use Electron API if available, otherwise fallback to window.open
+                    if (typeof window !== 'undefined' && (window as any).electronAPI?.openExternal) {
+                      try {
+                        await (window as any).electronAPI.openExternal(href);
+                      } catch (error) {
+                        console.error('Failed to open external URL:', error);
+                        // Fallback to window.open if Electron API fails
+                        window.open(href, '_blank', 'noopener,noreferrer');
+                      }
+                    } else {
+                      // Fallback for web environment
+                      window.open(href, '_blank', 'noopener,noreferrer');
+                    }
+                  }
+                };
+                return (
+                  <a 
+                    {...props}
+                    href={href} 
+                    className="text-primary underline hover:text-primary/80 cursor-pointer" 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    onClick={handleClick}
+                    style={{ pointerEvents: 'auto', position: 'relative', zIndex: 10 }}
+                  >
+                    {children}
+                </a>
+                );
+              },
             }}
           >
             {message.content || (message.role === "assistant" && isSending ? "..." : "")}

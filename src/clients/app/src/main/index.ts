@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Menu, nativeImage } from "electron";
+import { app, BrowserWindow, Menu, nativeImage, shell } from "electron";
 import { fileURLToPath } from "node:url";
 import { dirname } from "node:path";
 import { windowManager } from "@main/window.js";
@@ -82,9 +82,15 @@ app.on("before-quit", async () => {
   await cleanupGateway();
 });
 
-// Security: Prevent new window creation
+// Security: Prevent new window creation, but allow external URLs
 app.on("web-contents-created", (_, contents) => {
-  contents.setWindowOpenHandler(() => {
+  contents.setWindowOpenHandler(({ url }) => {
+    // Allow external URLs to open in default browser
+    if (url.startsWith("http://") || url.startsWith("https://")) {
+      shell.openExternal(url);
+      return { action: "deny" }; // Don't open in Electron window
+    }
+    // Deny all other window creation attempts
     return { action: "deny" };
   });
 });

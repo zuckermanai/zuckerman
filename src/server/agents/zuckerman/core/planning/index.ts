@@ -408,6 +408,7 @@ Return ONLY valid JSON, no other text.`;
 
   /**
    * Generate interruption confirmation message using LLM
+   * Generates contextual, natural confirmations that adapt to the user's request type
    */
   async generateInterruptionConfirmation(
     currentTask: Task,
@@ -420,42 +421,31 @@ Return ONLY valid JSON, no other text.`;
         ? ` (${currentTask.progress}% complete)` 
         : "";
 
-      const systemPrompt = `You are a helpful AI assistant. The user is asking you to do something, but you're currently working on another task.
+      const systemPrompt = `You're a helpful assistant who's currently busy working on something. The user just asked you something new.
 
-Generate a polite, professional confirmation message asking if they want you to interrupt your current work.
+You want to be helpful, but you're in the middle of something. Respond naturally - like a real person would when they're busy but want to help. 
 
-Be:
-- Respectful and professional
-- Brief and clear
-- Include what you're currently working on
-- Use the EXACT user request wording - do not rephrase or interpret
-- Ask if they're sure they want you to switch
+Understand what they're asking and respond in a way that makes sense. Don't just repeat their words back to them.`;
 
-Format like: "Sir, I'm working right now on [current task]. Are you sure you want me to [use exact user request here]?"
+      const userPrompt = `You're currently working on: ${currentTask.title}${progressText}
 
-IMPORTANT: Use the user's exact words from "New Request" below. Do not rephrase, interpret, or change the wording.
+The user just asked: "${newRequest}"
 
-Return ONLY the message text, no other formatting or markdown.`;
-
-      const userPrompt = `Current Task: ${currentTask.title}${progressText} (${currentTask.urgency} urgency)
-New Request (use EXACT wording): "${newRequest}" (${newUrgency} urgency)
-
-Generate a confirmation message asking if they want to interrupt. Use the exact wording from "New Request" above.`;
+Respond naturally - like you're a busy person who wants to help but needs to check if they want you to switch tasks.`;
 
       const response = await model.call({
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: userPrompt },
         ],
-        temperature: 0.7,
+        temperature: 0.8,
         maxTokens: 150,
       });
 
       return response.content.trim();
     } catch (error) {
       console.warn(`[Planning] Failed to generate interruption confirmation:`, error);
-      // Fallback message
-      return `Sir, I'm working right now on "${currentTask.title}". Are you sure you want me to check "${newRequest}"?`;
+      throw error;
     }
   }
 

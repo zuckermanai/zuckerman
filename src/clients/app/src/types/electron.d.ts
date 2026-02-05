@@ -31,6 +31,9 @@ export interface ElectronAPI {
   
   // Reset data
   resetAllData: () => Promise<{ success: boolean; message?: string; error?: string }>;
+  
+  // Open external URL
+  openExternal: (url: string) => Promise<{ success: boolean; error?: string }>;
 }
 
 export interface PlatformInfo {

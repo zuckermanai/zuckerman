@@ -30,6 +30,9 @@ export interface ElectronAPI {
   
   // Reset data
   resetAllData: () => Promise<{ success: boolean; message?: string; error?: string }>;
+  
+  // Open external URL
+  openExternal: (url: string) => Promise<{ success: boolean; error?: string }>;
 }
 
 // Expose protected methods that allow the renderer process to use
@@ -68,6 +71,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
   
   // Reset data
   resetAllData: () => ipcRenderer.invoke("reset:all-data"),
+  
+  // Open external URL
+  openExternal: (url: string) => ipcRenderer.invoke("shell:open-external", url),
 } as ElectronAPI);
 
 // Expose platform info for safe area detection
