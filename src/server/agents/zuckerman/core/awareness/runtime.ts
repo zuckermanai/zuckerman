@@ -343,14 +343,15 @@ export class ZuckermanAwareness implements AgentRuntime {
           });
 
           // Process queue to start task execution (async - uses LLM for continuity assessment)
-          const queueResult = await this.planningManager.processQueue(conversationId);
+          // Pass original user message so confirmation uses exact wording
+          const queueResult = await this.planningManager.processQueue(conversationId, message);
         
         // Handle pending interruption
         if (queueResult.type === "pending_interruption") {
-          // Generate confirmation message
+          // Generate confirmation message using original user message
           const confirmationMessage = await this.planningManager.generateInterruptionConfirmation(
             queueResult.interruption.currentTask,
-            queueResult.interruption.newTask.title,
+            queueResult.interruption.originalUserMessage,
             queueResult.interruption.newTask.urgency
           );
 
@@ -477,6 +478,34 @@ export class ZuckermanAwareness implements AgentRuntime {
           llmTools,
           homedirDir,
         });
+      }
+
+      // Check if task should be completed (no tool calls, task is done)
+      const currentTask = this.planningManager.getCurrentTask();
+      if (currentTask) {
+        // If there are no more steps or all steps are completed, mark task as done
+        const steps = this.planningManager.getSteps();
+        const hasSteps = steps.length > 0;
+        const allStepsCompleted = hasSteps && this.planningManager.areAllStepsCompleted();
+        const noMoreSteps = !hasSteps || !this.planningManager.getCurrentStep();
+        
+        if (allStepsCompleted || (noMoreSteps && !result.toolCalls)) {
+          // Complete the task
+          await this.planningManager.completeCurrentTask(result.content, conversationId);
+          
+          // Emit queue update event
+          if (stream) {
+            const queueState = this.planningManager.getQueueState();
+            await stream({
+              type: "queue" as const,
+              data: {
+                agentId: this.agentId,
+                queue: queueState,
+                timestamp: Date.now(),
+              },
+            });
+          }
+        }
       }
 
       // Emit lifecycle end event
@@ -837,24 +866,43 @@ export class ZuckermanAwareness implements AgentRuntime {
                 },
               });
 
-              // Stream next step if available
-              const nextStep = this.planningManager.getCurrentStep();
-              if (nextStep) {
-                await stream({
-                  type: "lifecycle",
-                  data: {
-                    runId,
-                    step: {
-                      id: nextStep.id,
-                      title: nextStep.title,
-                      description: nextStep.description,
-                      order: nextStep.order,
-                      requiresConfirmation: nextStep.requiresConfirmation,
-                      confirmationReason: nextStep.confirmationReason,
+              // Check if all steps are completed
+              if (this.planningManager.areAllStepsCompleted()) {
+                // Complete the task
+                const completedTask = await this.planningManager.completeCurrentTask(result, conversationId);
+                
+                // Emit queue update event
+                if (stream) {
+                  const queueState = this.planningManager.getQueueState();
+                  await stream({
+                    type: "queue",
+                    data: {
+                      agentId: this.agentId,
+                      queue: queueState,
+                      timestamp: Date.now(),
                     },
-                    progress,
-                  },
-                });
+                  });
+                }
+              } else {
+                // Stream next step if available
+                const nextStep = this.planningManager.getCurrentStep();
+                if (nextStep) {
+                  await stream({
+                    type: "lifecycle",
+                    data: {
+                      runId,
+                      step: {
+                        id: nextStep.id,
+                        title: nextStep.title,
+                        description: nextStep.description,
+                        order: nextStep.order,
+                        requiresConfirmation: nextStep.requiresConfirmation,
+                        confirmationReason: nextStep.confirmationReason,
+                      },
+                      progress,
+                    },
+                  });
+                }
               }
             }
           } else {
@@ -962,6 +1010,34 @@ export class ZuckermanAwareness implements AgentRuntime {
       });
     }
 
+    // Check if task should be completed (no more tool calls, task is done)
+    const currentTask = this.planningManager.getCurrentTask();
+    if (currentTask) {
+      // If there are no more steps or all steps are completed, mark task as done
+      const steps = this.planningManager.getSteps();
+      const hasSteps = steps.length > 0;
+      const allStepsCompleted = hasSteps && this.planningManager.areAllStepsCompleted();
+      const noMoreSteps = !hasSteps || !this.planningManager.getCurrentStep();
+      
+      if (allStepsCompleted || (noMoreSteps && !result.toolCalls)) {
+        // Complete the task
+        await this.planningManager.completeCurrentTask(result.content, conversationId);
+        
+        // Emit queue update event
+        if (stream) {
+          const queueState = this.planningManager.getQueueState();
+          await stream({
+            type: "queue",
+            data: {
+              agentId: this.agentId,
+              queue: queueState,
+              timestamp: Date.now(),
+            },
+          });
+        }
+      }
+    }
+
     // Emit lifecycle end event
     if (stream) {
       await stream({
@@ -994,6 +1070,13 @@ export class ZuckermanAwareness implements AgentRuntime {
   clearCache(): void {
     this.promptCacheClear();
     this.llmManager.clearCache();
+  }
+
+  /**
+   * Get planning manager instance
+   */
+  getPlanningManager(): PlanningManager {
+    return this.planningManager;
   }
 
   private promptCacheClear(): void {

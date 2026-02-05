@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
 import { 
   Bot, 
   Info, 
@@ -29,10 +30,13 @@ import {
   Send,
   Inbox,
   Zap,
-  Code
+  Code,
+  ListTodo
 } from "lucide-react";
 import { GatewayClient } from "../../../core/gateway/client";
 import type { UseAppReturn } from "../../../hooks/use-app";
+import { useAgentQueue } from "../../../hooks/use-agent-queue";
+import { AgentQueuePanel } from "./components/agent-queue-panel";
 
 type AgentTab = "overview" | "prompts" | "tools" | "conversations" | "activities";
 
@@ -88,6 +92,14 @@ export function AgentView({ agentId, state, gatewayClient, onClose }: AgentViewP
   const [activitiesError, setActivitiesError] = useState<string | null>(null);
   const [activityDateFilter, setActivityDateFilter] = useState<string>("today");
   const [activityTypeFilter, setActivityTypeFilter] = useState<string>("");
+  const [showQueuePanel, setShowQueuePanel] = useState(true);
+  
+  // Fetch queue data
+  const { queueState, loading: queueLoading, error: queueError, refetch: refetchQueue } = useAgentQueue(
+    agentId,
+    gatewayClient,
+    true
+  );
 
   const tabs = [
     { id: "overview" as AgentTab, label: "Overview", icon: <Info className="h-4 w-4" /> },
@@ -429,11 +441,21 @@ export function AgentView({ agentId, state, gatewayClient, onClose }: AgentViewP
 
 
   return (
-    <div className="flex-1 overflow-y-auto bg-background" style={{ minHeight: 0 }}>
-      <div className="max-w-4xl mx-auto w-full px-6 py-8">
+    <div className="flex-1 overflow-hidden bg-background" style={{ minHeight: 0, width: '100%', maxWidth: '100%' }}>
+      <ResizablePanelGroup 
+        orientation="horizontal" 
+        className="h-full w-full"
+      >
+        <ResizablePanel 
+          defaultSize={showQueuePanel ? 65 : 100} 
+          minSize={showQueuePanel ? 50 : 30}
+          maxSize={showQueuePanel ? 85 : 100}
+        >
+          <div className="h-full overflow-y-auto" style={{ width: '100%', overflowX: 'hidden' }}>
+            <div className="max-w-4xl mx-auto w-full px-6 py-8">
           {/* Header with tabs */}
           <div className="mb-8 pb-6 border-b border-border">
-            <div className="flex items-center gap-2 mb-4">
+            <div className="flex items-center justify-between mb-4">
               <Button
                 variant="ghost"
                 size="sm"
@@ -442,6 +464,15 @@ export function AgentView({ agentId, state, gatewayClient, onClose }: AgentViewP
               >
                 <ChevronLeft className="h-4 w-4 mr-1" />
                 Back
+              </Button>
+              <Button
+                variant={showQueuePanel ? "secondary" : "ghost"}
+                size="sm"
+                onClick={() => setShowQueuePanel(!showQueuePanel)}
+                className="h-8 px-2"
+                title={showQueuePanel ? "Hide queue panel" : "Show queue panel"}
+              >
+                <ListTodo className={`h-4 w-4 ${showQueuePanel ? "text-primary" : "text-muted-foreground"}`} />
               </Button>
             </div>
 
@@ -934,7 +965,31 @@ export function AgentView({ agentId, state, gatewayClient, onClose }: AgentViewP
               </div>
             )}
           </div>
-        </div>
-      </div>
+            </div>
+          </div>
+        </ResizablePanel>
+        
+        {showQueuePanel && (
+          <>
+            <ResizableHandle withHandle />
+            <ResizablePanel 
+              defaultSize={35} 
+              minSize={25} 
+              maxSize={50}
+              collapsible={false}
+            >
+              <div className="h-full w-full border-l border-border overflow-hidden bg-background">
+                <AgentQueuePanel
+                  queueState={queueState}
+                  loading={queueLoading}
+                  error={queueError}
+                  onRefresh={refetchQueue}
+                />
+              </div>
+            </ResizablePanel>
+          </>
+        )}
+      </ResizablePanelGroup>
+    </div>
   );
 }

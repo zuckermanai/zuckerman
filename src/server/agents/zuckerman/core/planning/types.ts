@@ -72,6 +72,7 @@ export interface PlanningStats {
 export interface PendingInterruption {
   currentTask: Task;
   newTask: Task;
+  originalUserMessage: string; // Original user message (exact wording)
   assessment: {
     continuityStrength: number;
     shouldSwitch: boolean;

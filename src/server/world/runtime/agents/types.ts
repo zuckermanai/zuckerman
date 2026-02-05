@@ -4,7 +4,7 @@ import type { SecurityContext } from "@server/world/execution/security/types.js"
 export type ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
 
 export interface StreamEvent {
-  type: "lifecycle" | "token" | "tool.call" | "tool.result" | "thinking" | "done";
+  type: "lifecycle" | "token" | "tool.call" | "tool.result" | "thinking" | "done" | "queue";
   data: {
     phase?: "start" | "end" | "error";
     error?: string;
@@ -42,6 +42,10 @@ export interface StreamEvent {
       id: string;
       title: string;
     };
+    // Queue update fields
+    agentId?: string;
+    queue?: unknown;
+    timestamp?: number;
   };
 }
 

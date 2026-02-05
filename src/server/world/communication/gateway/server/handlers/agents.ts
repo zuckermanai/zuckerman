@@ -164,6 +164,20 @@ export function createAgentHandlers(
         const streamCallback = async (event: StreamEvent) => {
           // Emit event to the client
           try {
+            // Handle queue update events specially - emit as agent.queue.update
+            if (event.type === "queue" && event.data && "agentId" in event.data && "queue" in event.data) {
+              sendEvent(client.socket, {
+                type: "event",
+                event: "agent.queue.update",
+                payload: {
+                  agentId: event.data.agentId as string,
+                  queue: event.data.queue,
+                  timestamp: (event.data.timestamp as number) || Date.now(),
+                },
+              });
+            }
+            
+            // Emit standard stream event
             sendEvent(client.socket, {
               type: "event",
               event: `agent.stream.${event.type}`,
@@ -448,6 +462,92 @@ export function createAgentHandlers(
         respond(false, undefined, {
           code: "ERROR",
           message: err instanceof Error ? err.message : "Failed to confirm step",
+        });
+      }
+    },
+
+    "agent.queue": async ({ respond, params, client }) => {
+      const agentId = (params?.agentId as string | undefined) || null;
+      const stream = params?.stream as boolean | undefined;
+
+      if (!agentId) {
+        respond(false, undefined, {
+          code: "INVALID_REQUEST",
+          message: "Missing agentId",
+        });
+        return;
+      }
+
+      try {
+        const runtime = await agentFactory.getRuntime(agentId);
+        if (!runtime) {
+          respond(false, undefined, {
+            code: "AGENT_NOT_FOUND",
+            message: `Agent "${agentId}" not found`,
+          });
+          return;
+        }
+
+        // Check if runtime has planning manager
+        const planningManager = (runtime as any).getPlanningManager?.();
+        if (!planningManager) {
+          respond(false, undefined, {
+            code: "FEATURE_NOT_SUPPORTED",
+            message: `Agent "${agentId}" does not support queue management`,
+          });
+          return;
+        }
+
+        // Get current queue state
+        const queueState = planningManager.getQueueState();
+
+        if (stream) {
+          // Streaming mode: send initial state and set up event listener
+          respond(true, {
+            queue: queueState,
+            streaming: true,
+          });
+
+          // Set up periodic updates (every 1 second) while connection is open
+          const intervalId = setInterval(() => {
+            try {
+              if (client.socket.readyState === 1) { // WebSocket.OPEN
+                const currentState = planningManager.getQueueState();
+                sendEvent(client.socket, {
+                  type: "event",
+                  event: "agent.queue.update",
+                  payload: {
+                    agentId,
+                    queue: currentState,
+                    timestamp: Date.now(),
+                  },
+                });
+              } else {
+                // Connection closed, stop interval
+                clearInterval(intervalId);
+              }
+            } catch (err) {
+              console.error(`[AgentHandler] Error sending queue update:`, err);
+              clearInterval(intervalId);
+            }
+          }, 1000);
+
+          // Clean up interval when connection closes
+          client.socket.on("close", () => {
+            clearInterval(intervalId);
+          });
+        } else {
+          // JSON mode: return current state
+          respond(true, {
+            agentId,
+            queue: queueState,
+            timestamp: Date.now(),
+          });
+        }
+      } catch (err) {
+        respond(false, undefined, {
+          code: "ERROR",
+          message: err instanceof Error ? err.message : "Failed to get queue",
         });
       }
     },

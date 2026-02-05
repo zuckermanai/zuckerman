@@ -143,6 +143,13 @@ export class TacticalExecutor {
   }
 
   /**
+   * Check if all steps are completed
+   */
+  areAllStepsCompleted(): boolean {
+    return this.stepManager.areAllStepsCompleted(this.steps);
+  }
+
+  /**
    * Check if task is active
    */
   isTaskActive(taskId: string): boolean {

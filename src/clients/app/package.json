@@ -44,6 +44,7 @@
     "lucide-react": "^0.344.0",
     "qrcode.react": "^4.2.0",
     "react-markdown": "^9.0.1",
+    "react-resizable-panels": "^4.6.0",
     "react-router-dom": "^7.13.0",
     "tailwind-merge": "^2.6.1",
     "ws": "^8.18.0"

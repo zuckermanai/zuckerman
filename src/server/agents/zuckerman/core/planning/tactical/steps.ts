@@ -39,9 +39,11 @@ export class StepSequenceManager {
     const llmManager = LLMManager.getInstance();
     const model = await llmManager.fastCheap();
 
-    const systemPrompt = `You are the tactical planning system. Break down the user's request into clear, actionable steps.
+    const systemPrompt = `You are the tactical planning system. Analyze the user's request and determine if it needs to be broken down into steps.
 
-Analyze the task and create a step-by-step plan. For each step, determine if it requires user confirmation before execution.
+If the task is simple and can be completed in a single action without needing tactical planning, set stepsRequired to false and return an empty steps array.
+
+If the task requires multiple steps or tactical planning, set stepsRequired to true and break it down into clear, actionable steps. For each step, determine if it requires user confirmation before execution.
 
 Steps that require confirmation:
 - File deletion or modification
@@ -50,18 +52,23 @@ Steps that require confirmation:
 - Potentially destructive actions
 - Sensitive operations
 
-Return JSON array of steps:
-[
-  {
-    "title": "step title",
-    "description": "what this step does",
-    "order": 0,
-    "requiresConfirmation": true/false,
-    "confirmationReason": "why confirmation is needed (if requiresConfirmation is true)"
-  }
-]
+Return JSON:
+{
+  "stepsRequired": true/false,
+  "steps": [
+    {
+      "title": "step title",
+      "description": "what this step does",
+      "order": 0,
+      "requiresConfirmation": true/false,
+      "confirmationReason": "why confirmation is needed (if requiresConfirmation is true)"
+    }
+  ]
+}
 
-Return ONLY valid JSON array, no other text.`;
+If stepsRequired is false, return an empty steps array.
+
+Return ONLY valid JSON, no other text.`;
 
     const context = focus
       ? `Current focus: ${focus.currentTopic}${focus.currentTask ? ` (task: ${focus.currentTask})` : ""}\nUrgency: ${urgency}\n\nTask: ${message}`
@@ -80,16 +87,32 @@ Return ONLY valid JSON array, no other text.`;
       });
 
       const content = response.content.trim();
-      const jsonMatch = content.match(/```(?:json)?\s*(\[.*?\])/s);
-      const jsonStr = jsonMatch ? jsonMatch[1] : content;
+      // Try to extract JSON from code blocks first (handles multiline)
+      let jsonStr = content;
+      const codeBlockMatch = content.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+      if (codeBlockMatch) {
+        jsonStr = codeBlockMatch[1].trim();
+      }
       const parsed = JSON.parse(jsonStr);
 
-      if (!Array.isArray(parsed)) {
+      if (typeof parsed !== "object" || parsed === null) {
         throw new Error("Invalid response format");
       }
 
+      // If steps are not required, return empty array (skip tactical planning)
+      if (parsed.stepsRequired === false) {
+        return [];
+      }
+
+      // If stepsRequired is true or undefined (backward compatibility), process steps
+      const stepsArray = parsed.steps || parsed.stepsArray || (Array.isArray(parsed) ? parsed : []);
+      
+      if (!Array.isArray(stepsArray)) {
+        throw new Error("Invalid steps format");
+      }
+
       // Convert to TaskStep format
-      const steps: TaskStep[] = parsed.map((step: any, index: number) => ({
+      const steps: TaskStep[] = stepsArray.map((step: any, index: number) => ({
         id: `step-${Date.now()}-${index}`,
         title: step.title || `Step ${index + 1}`,
         description: step.description,

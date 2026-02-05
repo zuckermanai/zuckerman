@@ -117,7 +117,7 @@ export class PlanningManager {
    * ENHANCED: Uses LLM-based continuity assessment and updates attention
    * Returns ProcessQueueResult which can be a task, pending interruption, or none
    */
-  async processQueue(conversationId?: string): Promise<ProcessQueueResult> {
+  async processQueue(conversationId?: string, originalUserMessage?: string): Promise<ProcessQueueResult> {
     const queue = this.queueManager.getQueue();
     const completedIds = new Set(
       queue.completed.filter((t) => t.status === "completed").map((t) => t.id)
@@ -170,9 +170,13 @@ export class PlanningManager {
     // If switching would interrupt current task and not critical, ask for confirmation
     if (currentTask && shouldSwitch && nextTask.urgency !== "critical") {
       // Store pending interruption for user confirmation
+      // Use original user message if provided, otherwise fall back to task description/title
+      const originalMessage = originalUserMessage || nextTask.description || nextTask.title;
+      
       this.pendingInterruption = {
         currentTask,
         newTask: nextTask,
+        originalUserMessage: originalMessage,
         assessment: assessment || {
           continuityStrength: 0.5,
           shouldSwitch: true,
@@ -424,16 +428,19 @@ Be:
 - Respectful and professional
 - Brief and clear
 - Include what you're currently working on
+- Use the EXACT user request wording - do not rephrase or interpret
 - Ask if they're sure they want you to switch
 
-Format like: "Sir, I'm working right now on [current task]. Are you sure you want me to [new request]?"
+Format like: "Sir, I'm working right now on [current task]. Are you sure you want me to [use exact user request here]?"
+
+IMPORTANT: Use the user's exact words from "New Request" below. Do not rephrase, interpret, or change the wording.
 
 Return ONLY the message text, no other formatting or markdown.`;
 
       const userPrompt = `Current Task: ${currentTask.title}${progressText} (${currentTask.urgency} urgency)
-New Request: ${newRequest} (${newUrgency} urgency)
+New Request (use EXACT wording): "${newRequest}" (${newUrgency} urgency)
 
-Generate a confirmation message asking if they want to interrupt.`;
+Generate a confirmation message asking if they want to interrupt. Use the exact wording from "New Request" above.`;
 
       const response = await model.call({
         messages: [
@@ -571,6 +578,13 @@ Generate a confirmation message asking if they want to interrupt.`;
    */
   getSteps(): TaskStep[] {
     return this.executor.getSteps();
+  }
+
+  /**
+   * Check if all steps are completed
+   */
+  areAllStepsCompleted(): boolean {
+    return this.executor.areAllStepsCompleted();
   }
 
   /**
