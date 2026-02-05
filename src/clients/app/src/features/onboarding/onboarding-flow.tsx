@@ -79,7 +79,7 @@ export function OnboardingFlow({ onComplete, onSkip, gatewayClient }: Onboarding
     },
     security: {
       sandboxMode: "all",
-      enabledTools: ["terminal", "browser", "filesystem", "cron", "canvas"],
+      enabledTools: ["terminal", "browser", "filesystem", "cron"],
       deniedCommands: "rm,sudo,format",
     },
     testResults: {

@@ -19,7 +19,6 @@ const AVAILABLE_TOOLS = [
   { id: "browser", label: "Browser", description: "Web browsing and automation" },
   { id: "filesystem", label: "Filesystem", description: "Read and write files" },
   { id: "cron", label: "Cron", description: "Scheduled tasks" },
-  { id: "canvas", label: "Canvas", description: "UI rendering and interaction" },
 ];
 
 export function SecurityStep({ state, onUpdate, onNext, onBack }: SecurityStepProps) {

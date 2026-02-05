@@ -1,8 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { AgentRuntime, AgentRunParams, AgentRunResult, StreamCallback } from "@server/world/runtime/agents/types.js";
 import type { LLMMessage, LLMTool } from "@server/world/providers/llm/types.js";
-import type { LLMModel as LLMModelType } from "@server/world/providers/llm/types.js";
-import type { ConversationId } from "@server/agents/zuckerman/conversations/types.js";
 import type { SecurityContext } from "@server/world/execution/security/types.js";
 import { loadConfig } from "@server/world/config/index.js";
 import { ConversationManager } from "@server/agents/zuckerman/conversations/index.js";
@@ -19,8 +17,7 @@ import { UnifiedMemoryManager } from "@server/agents/zuckerman/core/memory/manag
 import { runSleepModeIfNeeded } from "@server/agents/zuckerman/sleep/index.js";
 import { activityRecorder } from "@server/world/activity/index.js";
 import { resolveMemorySearchConfig } from "@server/agents/zuckerman/core/memory/config.js";
-import { ExecutiveController, makeAllocationDecision } from "../attention/index.js";
-import type { MemoryType } from "../memory/types.js";
+import { ExecutiveController } from "../attention/index.js";
 
 export class ZuckermanAwareness implements AgentRuntime {
   readonly agentId = "zuckerman";
@@ -29,7 +26,7 @@ export class ZuckermanAwareness implements AgentRuntime {
   private llmManager: LLMManager;
   private conversationManager: ConversationManager;
   private toolRegistry: ZuckermanToolRegistry;
-  private dbInitialized: boolean = false;
+
   private memoryManager: UnifiedMemoryManager | null = null;
   private attentionController: ExecutiveController;
   
@@ -131,7 +128,7 @@ export class ZuckermanAwareness implements AgentRuntime {
   }
 
   async run(params: AgentRunParams): Promise<AgentRunResult> {
-    const { conversationId, message, thinkingLevel = "off", temperature, securityContext, stream } = params;
+    const { conversationId, message, temperature, securityContext, stream } = params;
     const runId = randomUUID();
 
     // Record agent run start
@@ -183,46 +180,12 @@ export class ZuckermanAwareness implements AgentRuntime {
       // ensuring we always have the latest semantic memories
       const systemPrompt = await this.buildSystemPrompt(prompts, homedirDir);
 
-      // Process attention - analyze focus and urgency
-      let retrievedMemoriesText = "";
-      try {
-        const attentionState = await this.attentionController.processMessage(
-          message,
-          this.agentId,
-          conversationId
-        );
-
-        if (attentionState) {
-          // Get allocation decision based on attention state
-          const allocation = makeAllocationDecision(attentionState);
-          
-          // Retrieve memories based on attention-guided allocation
-          retrievedMemoriesText = await this.getMemoryManager().getRelevantMemoryContext({
-            query: attentionState.orienting.topic + (attentionState.orienting.task ? ` ${attentionState.orienting.task}` : ""),
-            types: allocation.memoryTypes as MemoryType[],
-            limit: allocation.memoryLimit,
-          });
-        } else {
-          // Fallback to default behavior if attention system fails
-          retrievedMemoriesText = await this.getMemoryManager().getRelevantMemoryContext({
-            query: message,
-            types: ["semantic", "episodic", "procedural"],
-            limit: 10,
-          });
-        }
-      } catch (memoryError) {
-        console.warn(`[ZuckermanRuntime] Memory retrieval failed:`, memoryError);
-        // Fallback on error
-        try {
-          retrievedMemoriesText = await this.getMemoryManager().getRelevantMemoryContext({
-            query: message,
-            types: ["semantic", "episodic", "procedural"],
-            limit: 10,
-          });
-        } catch (fallbackError) {
-          console.warn(`[ZuckermanRuntime] Fallback memory retrieval also failed:`, fallbackError);
-        }
-      }
+      // Process attention - analyze focus and urgency      
+      const retrievedMemoriesText = await this.getMemoryManager().getRelevantMemoryContext({
+        query: message,
+        types: ["semantic", "episodic", "procedural"],
+        limit: 100,
+      });
 
       // Prepare messages
       const messages: LLMMessage[] = [
@@ -415,7 +378,6 @@ export class ZuckermanAwareness implements AgentRuntime {
       // Emit as chunks with small delays to simulate streaming for better UX
       const chunkSize = 5; // Very small chunks for smoother appearance
       const content = result.content;
-      const totalChunks = Math.ceil(content.length / chunkSize);
       
       for (let i = 0; i < content.length; i += chunkSize) {
         const chunk = content.slice(i, i + chunkSize);

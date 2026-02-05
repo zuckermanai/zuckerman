@@ -56,7 +56,6 @@ export function SecurityView({
                 { id: "browser", label: "Browser", description: "Web browsing and automation" },
                 { id: "filesystem", label: "Filesystem", description: "Read and write files" },
                 { id: "cron", label: "Cron", description: "Scheduled tasks" },
-                { id: "canvas", label: "Canvas", description: "UI rendering and interaction" },
               ].map((tool) => (
                 <label
                   key={tool.id}
