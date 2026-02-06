@@ -4,7 +4,6 @@
  */
 
 import type { GoalTaskNode } from "../types.js";
-import type { FocusState } from "../../attention/types.js";
 import { SwitchingAgent, type SwitchingDecision } from "./agent.js";
 
 /**
@@ -34,9 +33,9 @@ export class TaskSwitcher {
   async shouldSwitchWithLLM(
     currentTask: GoalTaskNode | null,
     newTask: GoalTaskNode,
-    currentFocus: FocusState | null
+    currentFocus: null
   ): Promise<SwitchingDecision> {
-    return await this.agent.decideSwitch(currentTask, newTask, currentFocus);
+    return await this.agent.decideSwitch(currentTask, newTask, null);
   }
 
   /**

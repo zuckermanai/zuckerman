@@ -3,8 +3,7 @@
  * Role: You handle goal decomposition. Given a goal, decide how to break it down into sub-goals and tasks.
  */
 
-import type { GoalTaskNode, DecompositionResult } from "../types.js";
-import type { FocusState, UrgencyLevel } from "../../attention/types.js";
+import type { GoalTaskNode, DecompositionResult, TaskUrgency } from "../types.js";
 import type { MemoryManager } from "../../memory/types.js";
 import type { LLMMessage } from "@server/world/providers/llm/types.js";
 import { LLMManager } from "@server/world/providers/llm/index.js";
@@ -29,8 +28,8 @@ export class StrategicAgent {
    */
   async decomposeGoal(
     goal: GoalTaskNode,
-    urgency: UrgencyLevel,
-    focus: FocusState | null
+    urgency: TaskUrgency,
+    focus: null
   ): Promise<DecompositionResult> {
     const model = await this.llmManager.fastCheap();
 
@@ -40,7 +39,6 @@ Given a goal, decide how to break it down. Return your decision as JSON.`;
 
     const context = `Goal: ${goal.title}
 ${goal.description ? `Description: ${goal.description}` : ""}
-${focus ? `Current focus: ${focus.currentTopic}` : ""}
 Urgency: ${urgency}`;
 
     const messages: LLMMessage[] = [

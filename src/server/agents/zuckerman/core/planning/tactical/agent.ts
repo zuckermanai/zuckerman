@@ -4,7 +4,7 @@
  */
 
 import type { TaskStep } from "./steps.js";
-import type { UrgencyLevel, FocusState } from "../../attention/types.js";
+import type { TaskUrgency } from "../types.js";
 import type { LLMMessage } from "@server/world/providers/llm/types.js";
 import { LLMManager } from "@server/world/providers/llm/index.js";
 
@@ -20,8 +20,8 @@ export class TacticalAgent {
    */
   async decomposeTask(
     message: string,
-    urgency: UrgencyLevel,
-    focus: FocusState | null
+    urgency: TaskUrgency,
+    focus: null
   ): Promise<TaskStep[]> {
     const model = await this.llmManager.fastCheap();
 
@@ -31,9 +31,7 @@ Given a task, decide what steps are needed to complete it. Return your decision 
 
 IMPORTANT: Each step must have a clear, descriptive title that explains what action will be performed. Do NOT use generic titles like "Step 1", "Step 2", or numbered steps. Use action verbs and be specific (e.g., "Create project directory", "Install npm dependencies", "Write configuration file").`;
 
-    const context = focus
-      ? `Current focus: ${focus.currentTopic}${focus.currentTask ? ` (task: ${focus.currentTask})` : ""}\nUrgency: ${urgency}\n\nTask: ${message}`
-      : `Urgency: ${urgency}\n\nTask: ${message}`;
+    const context = `Urgency: ${urgency}\n\nTask: ${message}`;
 
     const messages: LLMMessage[] = [
       { role: "system", content: systemPrompt },

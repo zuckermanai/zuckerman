@@ -3,6 +3,8 @@
  * Task queue management and planning types
  */
 
+import type { TaskStep } from "./tactical/steps.js";
+
 /**
  * Task urgency level
  */
@@ -129,13 +131,20 @@ export interface ExecutionOrderResult {
 }
 
 /**
- * Process queue result - can be task or pending interruption
- * UPDATED: Now uses GoalTaskNode instead of Task
+ * Process queue result - can be task or none
+ * Uses GoalTaskNode for task representation
  */
 export type ProcessQueueResult = 
   | { type: "task"; node: GoalTaskNode }
-  | { type: "pending_interruption"; interruption: PendingInterruption }
   | { type: "none"; node: null };
+
+/**
+ * Plan result - result of planning for a new message
+ * Simplified to just return a user-friendly message
+ */
+export interface PlanResult {
+  message: string; // LLM-generated user-friendly message
+}
 
 /**
  * Planning State - Overall planning state per agent

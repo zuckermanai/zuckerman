@@ -46,6 +46,20 @@ export interface StreamEvent {
     agentId?: string;
     queue?: unknown;
     timestamp?: number;
+    // Additional context fields
+    message?: string;
+    currentTask?: {
+      id: string;
+      title: string;
+    };
+    queuedTask?: {
+      id: string;
+      title: string;
+    };
+    previousTask?: {
+      id: string;
+      title: string;
+    };
   };
 }
 

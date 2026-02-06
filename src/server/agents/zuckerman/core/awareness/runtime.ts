@@ -1,26 +1,18 @@
 import { randomUUID } from "node:crypto";
-import type { AgentRuntime, AgentRunParams, AgentRunResult, StreamCallback } from "@server/world/runtime/agents/types.js";
-import type { LLMMessage, LLMTool } from "@server/world/providers/llm/types.js";
-import type { SecurityContext } from "@server/world/execution/security/types.js";
+import type { AgentRuntime, AgentRunParams, AgentRunResult } from "@server/world/runtime/agents/types.js";
+import type { LLMTool } from "@server/world/providers/llm/types.js";
 import { loadConfig } from "@server/world/config/index.js";
 import { ConversationManager } from "@server/agents/zuckerman/conversations/index.js";
 import { ZuckermanToolRegistry } from "@server/agents/zuckerman/tools/registry.js";
-import type { ToolExecutionContext } from "@server/agents/zuckerman/tools/terminal/index.js";
-import { truncateOutput } from "@server/agents/zuckerman/tools/truncation.js";
-import { LLMManager, LLMModel } from "@server/world/providers/llm/index.js";
+import { LLMManager } from "@server/world/providers/llm/index.js";
 import { PromptLoader, type LoadedPrompts } from "../identity/identity-loader.js";
 import { agentDiscovery } from "@server/agents/discovery.js";
-import {
-  resolveAgentHomedir,
-} from "@server/world/homedir/resolver.js";
+import { resolveAgentHomedir } from "@server/world/homedir/resolver.js";
 import { UnifiedMemoryManager } from "@server/agents/zuckerman/core/memory/manager.js";
-import type { SemanticMemory, EpisodicMemory, ProceduralMemory } from "@server/agents/zuckerman/core/memory/types.js";
-import { runSleepModeIfNeeded } from "@server/agents/zuckerman/sleep/index.js";
 import { activityRecorder } from "@server/world/activity/index.js";
 import { resolveMemorySearchConfig } from "@server/agents/zuckerman/core/memory/config.js";
-import { ExecutiveController } from "../attention/index.js";
 import { PlanningManager } from "../planning/index.js";
-import type { TaskStep } from "../planning/tactical/index.js";
+import { StreamEventEmitter, MemoryHandler, MessageBuilder, LLMService, ToolExecutor } from "./services/index.js";
 
 export class ZuckermanAwareness implements AgentRuntime {
   readonly agentId = "zuckerman";
@@ -31,7 +23,6 @@ export class ZuckermanAwareness implements AgentRuntime {
   private toolRegistry: ZuckermanToolRegistry;
 
   private memoryManager: UnifiedMemoryManager | null = null;
-  private attentionController: ExecutiveController;
   private planningManager: PlanningManager;
   
   // Load prompts from agent's core directory (where markdown files are)
@@ -44,18 +35,9 @@ export class ZuckermanAwareness implements AgentRuntime {
     this.llmManager = llmManager || LLMManager.getInstance();
     this.promptLoader = promptLoader || new PromptLoader();
     
-    // Load config for fastModelId - will be set async on first use
-    this.attentionController = new ExecutiveController({
-      enabled: true,
-      focusPersistence: true,
-    });
-    
-    // Initialize planning manager WITH attention controller for bidirectional feedback
+    // Initialize planning manager
     // Memory manager will be set later when initialized
-    this.planningManager = new PlanningManager(this.agentId, this.attentionController);
-    
-    // Set bidirectional references
-    this.planningManager.setAttentionController(this.attentionController);
+    this.planningManager = new PlanningManager(this.agentId);
     
     // Get agent directory from discovery service
     const metadata = agentDiscovery.getMetadata(this.agentId);
@@ -140,8 +122,11 @@ export class ZuckermanAwareness implements AgentRuntime {
   }
 
   async run(params: AgentRunParams): Promise<AgentRunResult> {
-    let { conversationId, message, temperature, securityContext, stream } = params;
+    const { conversationId, message, temperature, securityContext, stream } = params;
     const runId = randomUUID();
+
+    // Initialize stream emitter
+    const streamEmitter = new StreamEventEmitter(stream);
 
     // Record agent run start
     await activityRecorder.recordAgentRunStart(
@@ -151,16 +136,7 @@ export class ZuckermanAwareness implements AgentRuntime {
       message,
     );
 
-    // Emit lifecycle start event
-    if (stream) {
-      await stream({
-        type: "lifecycle",
-        data: {
-          phase: "start",
-          runId,
-        },
-      });
-    }
+    await streamEmitter.emitLifecycleStart(runId);
 
     try {
       // Update tool registry conversation ID for batch tool context
@@ -176,317 +152,31 @@ export class ZuckermanAwareness implements AgentRuntime {
       // Initialize memory manager if not already initialized
       this.initializeMemoryManager(homedir);
 
-      // Check if sleep mode is needed before processing the message
-      // This processes and consolidates memories periodically
-      await runSleepModeIfNeeded({
-        config,
-        conversationManager: this.conversationManager,
-        conversationId,
-        agentId: this.agentId,
-        homedir,
-      });
-      
-      // Load prompts
+      // Initialize memory services
+      const memoryManager = this.getMemoryManager();
+      const memoryHandler = new MemoryHandler(memoryManager);
+      const messageBuilder = new MessageBuilder(memoryHandler);
+
+      // Load prompts and build system prompt
       const prompts = await this.loadPrompts();
-      
-      // ensuring we always have the latest semantic memories
       const systemPrompt = await this.buildSystemPrompt(prompts, homedir);
 
-      // Process attention - analyze focus and urgency
-      let attentionState = await this.attentionController.processMessage(
+      // Plan for the new message
+      await this.handlePlanning(message, conversationId, runId, streamEmitter);
+
+      // Build messages with memory context
+      const conversation = this.conversationManager.getConversation(conversationId) ?? null;
+      const relevantMemoriesText = await memoryHandler.getRelevantMemoriesText(message);
+      const messages = await messageBuilder.buildMessages(
+        systemPrompt,
         message,
-        this.agentId,
-        conversationId
+        conversation,
+        relevantMemoriesText
       );
 
-      // Update planning manager with current focus
-      if (attentionState?.focus) {
-        this.planningManager.setFocus(attentionState.focus);
-      }
-
-      // Check if there's a pending interruption confirmation to handle
-      const pendingInterruption = this.planningManager.getPendingInterruption();
-      let isConfirmedInterruption = false;
-      let confirmedTaskSteps: TaskStep[] = [];
-      
-      if (pendingInterruption) {
-        // User is responding to interruption confirmation
-        const confirmationResult = await this.planningManager.handleInterruptionConfirmation(
-          message,
-          conversationId
-        );
-
-        if (confirmationResult.proceed && confirmationResult.newTask) {
-          // User confirmed - proceed with new task
-          // Task is already switched and started in handleInterruptionConfirmation
-          isConfirmedInterruption = true;
-          
-          // Decompose steps for the confirmed task
-          confirmedTaskSteps = await this.planningManager.decomposeTask(
-            confirmationResult.newTask.title,
-            confirmationResult.newTask.urgency || "medium",
-            attentionState?.focus || null
-          );
-
-          // Set steps for the executor
-          const executor = (this.planningManager as any).executor;
-          if (executor && executor.setSteps) {
-            executor.setSteps(confirmedTaskSteps);
-          }
-
-          // Stream steps to user
-          if (stream && confirmedTaskSteps.length > 0) {
-            await stream({
-              type: "lifecycle",
-              data: {
-                phase: "start",
-                runId,
-                steps: confirmedTaskSteps.map(s => ({
-                  id: s.id,
-                  title: s.title,
-                  description: s.description,
-                  order: s.order,
-                  requiresConfirmation: s.requiresConfirmation,
-                  confirmationReason: s.confirmationReason,
-                })),
-              },
-            });
-          }
-
-          // Stream initial step
-          const currentStep = this.planningManager.getCurrentStep();
-          if (stream && currentStep) {
-            await stream({
-              type: "lifecycle",
-              data: {
-                runId,
-                step: {
-                  id: currentStep.id,
-                  title: currentStep.title,
-                  description: currentStep.description,
-                  order: currentStep.order,
-                  requiresConfirmation: currentStep.requiresConfirmation,
-                  confirmationReason: currentStep.confirmationReason,
-                },
-                progress: 0,
-              },
-            });
-          }
-
-          // Use confirmed task title for LLM processing
-          message = confirmationResult.newTask.title;
-          // Re-process attention for the confirmed task
-          attentionState = await this.attentionController.processMessage(
-            message,
-            this.agentId,
-            conversationId
-          );
-          if (attentionState?.focus) {
-            this.planningManager.setFocus(attentionState.focus);
-          }
-        } else {
-          // User declined or said later
-          if (stream) {
-            await stream({
-              type: "lifecycle",
-              data: {
-                phase: "end",
-                runId,
-              },
-            });
-          }
-
-          const responseMessage = confirmationResult.addToQueue
-            ? "Understood. I'll add that to my queue and continue with the current task."
-            : "Understood. I'll continue with my current task.";
-
-          return {
-            response: responseMessage,
-            runId,
-          };
-        }
-      }
-
-      // Tactical planning: decompose task into steps
-      let steps: TaskStep[] = [];
-      let currentTaskId: string | null = null;
-      if (attentionState) {
-        steps = await this.planningManager.decomposeTask(
-          message,
-          attentionState.alerting.urgency,
-          attentionState.focus
-        );
-
-        // Stream steps to user
-        if (stream && steps.length > 0) {
-          await stream({
-            type: "lifecycle",
-            data: {
-              phase: "start",
-              runId,
-              steps: steps.map(s => ({
-                id: s.id,
-                title: s.title,
-                description: s.description,
-                order: s.order,
-                requiresConfirmation: s.requiresConfirmation,
-                confirmationReason: s.confirmationReason,
-              })),
-            },
-          });
-        }
-
-        // Add task to planning queue (skip if confirmed interruption - task already added)
-        if (!isConfirmedInterruption) {
-          currentTaskId = await this.planningManager.addGoalOrTask(
-            message,
-            message,
-            attentionState.alerting.urgency,
-            false, // isGoal = false (it's a task)
-            undefined, // parentId
-            conversationId // conversationId for memory integration
-          );
-
-          // Process tree to start task execution (async - uses LLM for continuity assessment)
-          // Pass original user message so confirmation uses exact wording
-          const queueResult = await this.planningManager.processTree(conversationId, message);
-        
-        // Handle pending interruption
-        if (queueResult.type === "pending_interruption") {
-          // Generate confirmation message using original user message
-          const confirmationMessage = await this.planningManager.generateInterruptionConfirmation(
-            queueResult.interruption.currentNode,
-            queueResult.interruption.originalUserMessage,
-            queueResult.interruption.newNode.urgency || "medium"
-          );
-
-          if (stream) {
-            await stream({
-              type: "lifecycle",
-              data: {
-                phase: "end",
-                runId,
-              },
-            });
-          }
-
-          return {
-            response: confirmationMessage,
-            runId,
-          };
-        }
-
-          // Handle task execution
-          if (queueResult.type === "task" && queueResult.node) {
-            // If this is the new task we just added, set steps
-            if (queueResult.node.id === currentTaskId) {
-              // Set steps for the executor
-              const executor = (this.planningManager as any).executor;
-              if (executor && executor.setSteps) {
-                executor.setSteps(steps);
-              }
-
-              // Stream initial step if available
-              const currentStep = this.planningManager.getCurrentStep();
-              if (stream && currentStep) {
-                await stream({
-                  type: "lifecycle",
-                  data: {
-                    runId,
-                    step: {
-                      id: currentStep.id,
-                      title: currentStep.title,
-                      description: currentStep.description,
-                      order: currentStep.order,
-                      requiresConfirmation: currentStep.requiresConfirmation,
-                      confirmationReason: currentStep.confirmationReason,
-                    },
-                    progress: 0,
-                  },
-                });
-              }
-            }
-          }
-        } else if (isConfirmedInterruption) {
-          // For confirmed interruption, steps are already set above
-          // Use confirmed task steps (already set in executor above)
-          steps = confirmedTaskSteps;
-        }
-      }
-
-      // Prepare messages
-      const messages: LLMMessage[] = [
-        { role: "system", content: systemPrompt },
-      ];
-
-      // Load conversation history
-      const conversation = this.conversationManager.getConversation(conversationId);
-      if (conversation) {
-        // Add all previous messages (no limit - uses full model context window)
-        for (const msg of conversation.messages) {
-          messages.push({
-            role: msg.role === "user" ? "user" : "assistant",
-            content: msg.content,
-          });
-        }
-      }
-
-      // Get relevant memories for the question before answering
-      let relevantMemoriesText = "";
-      try {
-        const memoryResult = await this.getMemoryManager().getRelevantMemories(message, {
-          limit: 50,
-          types: ["semantic", "episodic", "procedural"],
-        });
-
-        if (memoryResult.memories.length > 0) {
-          const memoryParts = memoryResult.memories.map((mem) => {
-            switch (mem.type) {
-              case "semantic": {
-                const s = mem as SemanticMemory;
-                const prefix = s.category ? `${s.category}: ` : "";
-                return `[Semantic] ${prefix}${s.fact}`;
-              }
-              case "episodic": {
-                const e = mem as EpisodicMemory;
-                return `[Episodic] ${e.event}: ${e.context.what}`;
-              }
-              case "procedural": {
-                const p = mem as ProceduralMemory;
-                return `[Procedural] ${p.pattern}: ${p.action}`;
-              }
-              default:
-                return `[${mem.type}] ${JSON.stringify(mem)}`;
-            }
-          });
-
-          relevantMemoriesText = `\n\n## Relevant Memories\n${memoryParts.join("\n")}`;
-        }
-      } catch (memoryError) {
-        // Don't fail if memory retrieval fails
-        console.warn(`[ZuckermanRuntime] Memory retrieval failed:`, memoryError);
-      }
-
-      console.log(`[ZuckermanRuntime] Relevant memories:`, relevantMemoriesText);
-
-      // Add current user message with relevant memories context
-      messages.push({ 
-        role: "system", 
-        content: relevantMemoriesText ? `${message}${relevantMemoriesText}` : message 
-      });
-
-      // Process new message for memory extraction (real-time)
-      // Note: Semantic memory is reloaded on every message in buildSystemPrompt(),
-      // so new memories added here will be available on the next message
-      try {
-        const conversationContext = conversation 
-          ? conversation.messages.slice(-3).map(m => m.content).join("\n")
-          : undefined;
-        await this.getMemoryManager().onNewMessage(message, conversationId, conversationContext);
-      } catch (extractionError) {
-        // Don't fail the main flow if extraction fails
-        console.warn(`[ZuckermanRuntime] Memory extraction failed:`, extractionError);
-      }
+      // Extract memories from new message
+      const conversationContext = messageBuilder.getConversationContext(conversation);
+      await memoryHandler.extractMemories(message, conversationId, conversationContext);
 
       // Prepare tools for LLM
       const llmTools: LLMTool[] = this.toolRegistry.list().map(t => ({
@@ -494,70 +184,50 @@ export class ZuckermanAwareness implements AgentRuntime {
         function: t.definition
       }));
 
-      // Run LLM with streaming support (model selected internally)
-      const result = await this.callLLMWithStreaming({
-        model: defaultModel,
+      // Initialize LLM service
+      const llmService = new LLMService(defaultModel, streamEmitter, runId);
+
+      // Run LLM
+      const result = await llmService.call({
         messages,
         temperature,
         tools: llmTools,
-        stream,
-        runId,
       });
 
       // Handle tool calls if any
       if (result.toolCalls && result.toolCalls.length > 0) {
-        return await this.handleToolCalls({
+        const toolExecutor = new ToolExecutor(
+          this.agentId,
+          this.toolRegistry,
+          this.planningManager,
+          streamEmitter,
+          llmService
+        );
+        return await toolExecutor.execute({
           conversationId,
           runId,
           messages,
           toolCalls: result.toolCalls,
           securityContext,
-          stream,
           temperature,
           llmTools,
           homedir,
+          agentId: this.agentId,
         });
       }
 
-      // Check if task should be completed (no tool calls, task is done)
-      const currentTask = this.planningManager.getCurrentTask();
-      if (currentTask) {
-        // If there are no more steps or all steps are completed, mark task as done
-        const steps = this.planningManager.getSteps();
-        const hasSteps = steps.length > 0;
-        const allStepsCompleted = hasSteps && this.planningManager.areAllStepsCompleted();
-        const noMoreSteps = !hasSteps || !this.planningManager.getCurrentStep();
-        
-        if (allStepsCompleted || (noMoreSteps && !result.toolCalls)) {
-          // Complete the task
-          await this.planningManager.completeCurrentTask(result.content, conversationId);
-          
-          // Emit queue update event
-          if (stream) {
-            const queueState = this.planningManager.getQueueState();
-            await stream({
-              type: "queue" as const,
-              data: {
-                agentId: this.agentId,
-                queue: queueState,
-                timestamp: Date.now(),
-              },
-            });
-          }
-        }
+      // Check if task should be completed
+      const taskCompleted = await this.planningManager.checkAndCompleteTaskIfDone(
+        result.content,
+        !!result.toolCalls,
+        conversationId
+      );
+
+      if (taskCompleted) {
+        await streamEmitter.emitQueueUpdate(this.agentId, this.planningManager.getQueueState());
       }
 
-      // Emit lifecycle end event
-      if (stream) {
-        await stream({
-          type: "lifecycle",
-          data: {
-            phase: "end",
-            runId,
-            tokensUsed: result.tokensUsed?.total,
-          },
-        });
-      }
+      await streamEmitter.emitLifecycleEnd(runId, result.tokensUsed?.total);
 
       // Record agent run completion
       await activityRecorder.recordAgentRunComplete(
@@ -566,7 +236,7 @@ export class ZuckermanAwareness implements AgentRuntime {
         runId,
         result.content,
         result.tokensUsed?.total,
-        undefined, // toolsUsed will be tracked separately
+        undefined,
       );
 
       return {
@@ -576,39 +246,16 @@ export class ZuckermanAwareness implements AgentRuntime {
       };
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : String(err);
-      
+
       // Mark current task as failed if there is one
       const currentTask = this.planningManager.getCurrentTask();
       if (currentTask) {
         await this.planningManager.failCurrentTask(errorMessage);
-        
-        // Emit queue update event
-        if (stream) {
-          const queueState = this.planningManager.getQueueState();
-          await stream({
-            type: "queue" as const,
-            data: {
-              agentId: this.agentId,
-              queue: queueState,
-              timestamp: Date.now(),
-            },
-          });
-        }
+        await streamEmitter.emitQueueUpdate(this.agentId, this.planningManager.getQueueState());
       }
-      
-      // Emit lifecycle error event
-      if (stream) {
-        await stream({
-          type: "lifecycle",
-          data: {
-            phase: "error",
-            error: errorMessage,
-            runId,
-          },
-        });
-      }
-      
-      // Record agent run error
+
+      await streamEmitter.emitLifecycleError(runId, errorMessage);
+
       await activityRecorder.recordAgentRunError(
         this.agentId,
         conversationId,
@@ -620,538 +267,23 @@ export class ZuckermanAwareness implements AgentRuntime {
     }
   }
 
-  /**
-   * Call LLM with streaming support when stream callback is provided
-   */
-  private async callLLMWithStreaming(params: {
-    model: LLMModel;
-    messages: LLMMessage[];
-    temperature?: number;
-    tools: LLMTool[];
-    stream?: StreamCallback;
-    runId: string;
-  }): Promise<{ content: string; toolCalls?: any[]; tokensUsed?: { total: number } }> {
-    const { model, messages, temperature, tools, stream, runId } = params;
-
-    // Try streaming first if requested and model supports it
-    if (stream) {
-      let accumulatedContent = "";
-      let streamingSucceeded = false;
-      
-      try {
-        // For now, only use pure streaming when no tools are available
-        // Most providers don't support streaming with tools properly
-        // TODO: Enhance providers to support streaming with tool calls
-        if (tools.length === 0) {
-          // Pure streaming - no tools needed
-          for await (const token of model.stream({
-            messages,
-            temperature,
-            tools: [],
-          })) {
-            accumulatedContent += token;
-            streamingSucceeded = true;
-            await stream({
-              type: "token",
-              data: {
-                token,
-                runId,
-              },
-            });
-          }
-
-          return {
-            content: accumulatedContent,
-            tokensUsed: undefined, // Streaming doesn't provide token counts
-          };
-        }
-      } catch (err) {
-        // If streaming fails, fall back to non-streaming
-        if (streamingSucceeded) {
-          // Partial stream succeeded, but error occurred - still return what we have
-          console.warn(`[ZuckermanRuntime] Streaming error, but partial content received:`, err);
-          return {
-            content: accumulatedContent,
-            tokensUsed: undefined,
-          };
-        }
-        console.warn(`[ZuckermanRuntime] Streaming failed, falling back to non-streaming:`, err);
-      }
-    }
-
-
-    // Non-streaming path:
-    // - When streaming failed or not supported
-    // - When streaming not requested
-    const result = await model.call({
-      messages,
-      temperature,
-      tools,
-    });
-
-    // If streaming was requested but we used non-streaming (due to tools or failure),
-    // emit the complete response as token events with delays to simulate streaming
-    if (stream && result.content) {
-      // Emit as chunks with small delays to simulate streaming for better UX
-      const chunkSize = 5; // Very small chunks for smoother appearance
-      const content = result.content;
-      
-      for (let i = 0; i < content.length; i += chunkSize) {
-        const chunk = content.slice(i, i + chunkSize);
-        try {
-          await stream({
-            type: "token",
-            data: {
-              token: chunk,
-              runId,
-            },
-          });
-          // Progressive delay: faster at start, slower as we go (for better UX)
-          // First chunks appear quickly, later chunks have more delay
-          const delay = i < content.length / 2 ? 15 : 25;
-          await new Promise(resolve => setTimeout(resolve, delay));
-        } catch (err) {
-          // If stream callback fails, log but continue
-          console.warn(`[ZuckermanRuntime] Stream callback error:`, err);
-        }
-      }
-    }
-
-    return {
-      content: result.content,
-      toolCalls: result.toolCalls,
-      tokensUsed: result.tokensUsed,
-    };
-  }
-
-  /**
-   * Handle tool calls and iteration
-   */
-  private async handleToolCalls(params: {
-    conversationId: string;
-    runId: string;
-    messages: LLMMessage[];
-    toolCalls: any[];
-    securityContext: SecurityContext;
-    stream?: StreamCallback;
-    temperature?: number;
-    llmTools: LLMTool[];
-    homedir: string;
-  }): Promise<AgentRunResult> {
-    const { conversationId, runId, messages, toolCalls, securityContext, stream, temperature, llmTools, homedir } = params;
-    
-    // Select model for tool calls (fastCheap for efficiency)
-    const model = await this.llmManager.fastCheap();
-    
-    // Add assistant message with tool calls to history
-    messages.push({
-      role: "assistant",
-      content: "",
-      toolCalls,
-    });
-
-    // Check if current step requires confirmation
-    const currentStep = this.planningManager.getCurrentStep();
-    if (currentStep?.requiresConfirmation && stream) {
-      // Stream confirmation request
-      await stream({
-        type: "lifecycle",
-        data: {
-          runId,
-          step: {
-            id: currentStep.id,
-            title: currentStep.title,
-            requiresConfirmation: true,
-            confirmationReason: currentStep.confirmationReason,
-          },
-          confirmationRequired: true,
-        },
-      });
-      // Note: In a real implementation, we'd wait for user confirmation here
-      // For now, we proceed automatically (can be enhanced later)
-    }
-
-    // Execute tools
-    const toolCallResults = [];
-    for (const toolCall of toolCalls) {
-      // Try to get tool with repair (fixes case mismatches)
-      const toolResult = this.toolRegistry.getWithRepair(toolCall.name);
-      
-      if (!toolResult) {
-        // Tool not found - provide helpful error with suggestions
-        const suggestions = this.toolRegistry.findSimilar(toolCall.name, 3);
-        const suggestionText = suggestions.length > 0
-          ? ` Did you mean: ${suggestions.join(", ")}?`
-          : "";
-        
-        toolCallResults.push({
-          toolCallId: toolCall.id,
-          role: "tool" as const,
-          content: `Error: Tool "${toolCall.name}" not found.${suggestionText} Available tools: ${this.toolRegistry.list().map(t => t.definition.name).join(", ")}`,
-        });
-        continue;
-      }
-
-      const { tool, repaired, originalName } = toolResult;
-      
-      // Log repair if it happened
-      if (repaired && originalName !== tool.definition.name) {
-        console.log(`[ToolRepair] Fixed tool name: "${originalName}" -> "${tool.definition.name}"`);
-      }
-
-      try {
-        // Parse arguments
-        const args = typeof toolCall.arguments === "string"
-          ? JSON.parse(toolCall.arguments)
-          : toolCall.arguments;
-
-        // Emit tool start event (use repaired name if applicable)
-        if (stream) {
-          stream({
-            type: "tool.call",
-            data: {
-              tool: tool.definition.name, // Use actual tool name, not the call name
-              toolArgs: args,
-            },
-          });
-        }
-
-        // Record tool call
-        await activityRecorder.recordToolCall(
-          this.agentId,
-          conversationId,
-          runId,
-          tool.definition.name,
-          args,
-        );
-
-        // Create execution context for tool
-        const executionContext: ToolExecutionContext = {
-          conversationId,
-          homedir,
-          stream: stream
-            ? (event) => {
-                stream({
-                  type: event.type === "tool.call" ? "tool.call" : "tool.result",
-                  data: {
-                    tool: event.data.tool,
-                    toolArgs: event.data.toolArgs,
-                    toolResult: event.data.toolResult,
-                  },
-                });
-              }
-            : undefined,
-        };
-
-        // Execute tool
-        let result = await tool.handler(args, securityContext, executionContext);
-
-        // Truncate large results to fit within context limits
-        // Skip truncation if result already indicates it was truncated
-        if (result && typeof result === "object" && "success" in result && result.success) {
-          const resultData = result.result;
-          if (resultData && typeof resultData === "object" && "content" in resultData) {
-            const content = resultData.content;
-            if (typeof content === "string" && content.length > 0) {
-              // Check if content is already truncated (has truncation metadata)
-              const isAlreadyTruncated = "truncated" in resultData && resultData.truncated === true;
-              
-              if (!isAlreadyTruncated) {
-                const truncated = await truncateOutput(content);
-                if (truncated.truncated) {
-                  // Update result with truncated content
-                  result = {
-                    ...result,
-                  result: {
-                    ...resultData,
-                    content: truncated.content,
-                    truncated: true,
-                  },
-                  };
-                }
-              }
-            }
-          }
-        }
-
-        // Emit tool end event (use repaired name if applicable)
-        if (stream) {
-          stream({
-            type: "tool.result",
-            data: {
-              tool: tool.definition.name, // Use actual tool name
-              toolResult: result,
-            },
-          });
-        }
-
-        // Record tool result
-        await activityRecorder.recordToolResult(
-          this.agentId,
-          conversationId,
-          runId,
-          tool.definition.name,
-          result,
-        );
-
-        // Track step progress after tool execution
-        const currentStep = this.planningManager.getCurrentStep();
-        if (currentStep) {
-          // Check if tool execution was successful
-          const isSuccess = typeof result === "object" && result && "success" in result
-            ? (result as { success?: boolean }).success !== false
-            : true;
-
-          if (isSuccess) {
-            // Complete current step on successful tool execution
-            this.planningManager.completeCurrentStep(result, conversationId);
-            
-            // Stream step completion and progress
-            if (stream) {
-              const steps = this.planningManager.getSteps();
-              const progress = steps.length > 0
-                ? Math.round((steps.filter(s => s.completed).length / steps.length) * 100)
-                : 0;
-              
-              await stream({
-                type: "lifecycle",
-                data: {
-                  runId,
-                  step: {
-                    id: currentStep.id,
-                    title: currentStep.title,
-                    description: currentStep.description,
-                    order: currentStep.order,
-                    completed: true,
-                  },
-                  progress,
-                },
-              });
-
-              // Check if all steps are completed
-              if (this.planningManager.areAllStepsCompleted()) {
-                // Complete the task
-                const completedTask = await this.planningManager.completeCurrentTask(result, conversationId);
-                
-                // Emit queue update event
-                if (stream) {
-                  const queueState = this.planningManager.getQueueState();
-                  await stream({
-                    type: "queue",
-                    data: {
-                      agentId: this.agentId,
-                      queue: queueState,
-                      timestamp: Date.now(),
-                    },
-                  });
-                }
-              } else {
-                // Stream next step if available
-                const nextStep = this.planningManager.getCurrentStep();
-                if (nextStep) {
-                  await stream({
-                    type: "lifecycle",
-                    data: {
-                      runId,
-                      step: {
-                        id: nextStep.id,
-                        title: nextStep.title,
-                        description: nextStep.description,
-                        order: nextStep.order,
-                        requiresConfirmation: nextStep.requiresConfirmation,
-                        confirmationReason: nextStep.confirmationReason,
-                      },
-                      progress,
-                    },
-                  });
-                }
-              }
-            }
-          } else {
-            // Handle step failure with contingency planning
-            const errorMsg = typeof result === "object" && result && "error" in result
-              ? String((result as { error?: string }).error || "Tool execution failed")
-              : "Tool execution failed";
-            
-            const fallbackTask = await this.planningManager.handleStepFailure(
-              currentStep,
-              errorMsg,
-              conversationId
-            );
-            
-            if (stream) {
-              await stream({
-                type: "lifecycle",
-                data: {
-                  runId,
-                  step: {
-                    id: currentStep.id,
-                    title: currentStep.title,
-                    error: errorMsg,
-                  },
-                  fallbackTask: fallbackTask ? {
-                    id: fallbackTask.id,
-                    title: fallbackTask.title,
-                  } : undefined,
-                },
-              });
-            }
-          }
-        }
-
-        // Convert result to string for LLM
-        let resultContent: string;
-        if (typeof result === "string") {
-          resultContent = result;
-        } else if (result && typeof result === "object" && "success" in result) {
-          // For ToolResult, extract the content intelligently
-          if (result.success && result.result) {
-            if (typeof result.result === "object" && "content" in result.result) {
-              resultContent = String(result.result.content);
-            } else {
-              resultContent = JSON.stringify(result.result);
-            }
-          } else {
-            resultContent = result.error || JSON.stringify(result);
-          }
-        } else {
-          resultContent = JSON.stringify(result);
-        }
-
-        toolCallResults.push({
-          toolCallId: toolCall.id,
-          role: "tool" as const,
-          content: resultContent,
-        });
-      } catch (err) {
-        const errorMsg = err instanceof Error ? err.message : String(err);
-        
-        // Record tool error
-        await activityRecorder.recordToolError(
-          this.agentId,
-          conversationId,
-          runId,
-          toolCall.name,
-          errorMsg,
-        );
-        
-        toolCallResults.push({
-          toolCallId: toolCall.id,
-          role: "tool" as const,
-          content: `Error executing tool: ${errorMsg}`,
-        });
-      }
-    }
-    // Add tool results to messages
-    for (const result of toolCallResults) {
-      messages.push(result);
-    }
-
-    // Run LLM again with tool results
-    let result;
-    try {
-      result = await this.callLLMWithStreaming({
-        model,
-        messages,
-        temperature,
-        tools: llmTools,
-        stream,
-        runId,
-      });
-    } catch (err) {
-      // If LLM call fails, mark task as failed
-      const currentTask = this.planningManager.getCurrentTask();
-      if (currentTask) {
-        const errorMessage = err instanceof Error ? err.message : String(err);
-        await this.planningManager.failCurrentTask(errorMessage);
-        
-        // Emit queue update event
-        if (stream) {
-          const queueState = this.planningManager.getQueueState();
-          await stream({
-            type: "queue" as const,
-            data: {
-              agentId: this.agentId,
-              queue: queueState,
-              timestamp: Date.now(),
-            },
-          });
-        }
-      }
-      throw err; // Re-throw to be caught by outer catch
-    }
-
-    // Handle nested tool calls (recursive)
-    if (result.toolCalls && result.toolCalls.length > 0) {
-      return await this.handleToolCalls({
-        conversationId,
-        runId,
-        messages,
-        toolCalls: result.toolCalls,
-        securityContext,
-        stream,
-        temperature,
-        llmTools,
-        homedir: params.homedir,
-      });
-    }
-
-    // Check if task should be completed (no more tool calls, task is done)
-    const currentTask = this.planningManager.getCurrentTask();
-    if (currentTask) {
-      // If there are no more steps or all steps are completed, mark task as done
-      const steps = this.planningManager.getSteps();
-      const hasSteps = steps.length > 0;
-      const allStepsCompleted = hasSteps && this.planningManager.areAllStepsCompleted();
-      const noMoreSteps = !hasSteps || !this.planningManager.getCurrentStep();
-      
-      if (allStepsCompleted || (noMoreSteps && !result.toolCalls)) {
-        // Complete the task
-        await this.planningManager.completeCurrentTask(result.content, conversationId);
-        
-        // Emit queue update event
-        if (stream) {
-          const queueState = this.planningManager.getQueueState();
-          await stream({
-            type: "queue" as const,
-            data: {
-              agentId: this.agentId,
-              queue: queueState,
-              timestamp: Date.now(),
-            },
-          });
-        }
-      }
-    }
-
-    // Emit lifecycle end event
-    if (stream) {
-      await stream({
-        type: "lifecycle",
-        data: {
-          phase: "end",
-          runId,
-          tokensUsed: result.tokensUsed?.total,
-        },
-      });
-    }
-
-    // Record agent run completion (from tool calls path)
-    await activityRecorder.recordAgentRunComplete(
-      this.agentId,
-      conversationId,
-      runId,
-      result.content,
-      result.tokensUsed?.total,
-      undefined, // toolsUsed will be tracked separately
+  private async handlePlanning(
+    message: string,
+    conversationId: string,
+    runId: string,
+    streamEmitter: StreamEventEmitter
+  ): Promise<void> {
+    const planResult = await this.planningManager.plan(
+      message,
+      "medium",
+      null,
+      conversationId
     );
 
-    return {
-      runId,
-      response: result.content,
-      tokensUsed: result.tokensUsed?.total,
-    };
+    // Emit LLM-generated message
+    await streamEmitter.emitPlanMessage(runId, planResult.message);
   }
+
 
   clearCache(): void {
     this.promptCacheClear();

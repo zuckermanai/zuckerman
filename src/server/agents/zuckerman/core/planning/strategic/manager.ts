@@ -4,8 +4,7 @@
  */
 
 import { randomUUID } from "node:crypto";
-import type { GoalTaskNode, GoalTaskTree } from "../types.js";
-import type { FocusState, UrgencyLevel } from "../../attention/types.js";
+import type { GoalTaskNode, GoalTaskTree, TaskUrgency } from "../types.js";
 import type { MemoryManager } from "../../memory/types.js";
 import { TreeManager } from "./tree.js";
 import { StrategicAgent } from "./agent.js";
@@ -36,8 +35,8 @@ export class StrategicManager {
   async createGoal(
     title: string,
     description: string,
-    urgency: UrgencyLevel,
-    focus: FocusState | null,
+    urgency: TaskUrgency,
+    focus: null,
     conversationId?: string
   ): Promise<GoalTaskNode> {
     const goal: GoalTaskNode = {
@@ -65,7 +64,7 @@ export class StrategicManager {
 
     // Auto-decompose if needed
     if (await this.agent.shouldDecompose(goal)) {
-      const decomposition = await this.agent.decomposeGoal(goal, urgency, focus);
+      const decomposition = await this.agent.decomposeGoal(goal, urgency, null);
       decomposition.children.forEach((child) => {
         this.treeManager.addNode(child, goal.id);
       });
@@ -80,7 +79,7 @@ export class StrategicManager {
   createTask(
     title: string,
     description: string,
-    urgency: UrgencyLevel,
+    urgency: TaskUrgency,
     priority: number,
     parentId?: string
   ): GoalTaskNode {
@@ -247,12 +246,12 @@ export class StrategicManager {
   /**
    * Decompose goal (manual trigger)
    */
-  async decomposeGoal(nodeId: string, urgency: UrgencyLevel, focus: FocusState | null): Promise<boolean> {
+  async decomposeGoal(nodeId: string, urgency: TaskUrgency, focus: null): Promise<boolean> {
     const node = this.treeManager.getNode(nodeId);
     if (!node || node.type !== "goal") return false;
 
     if (await this.agent.shouldDecompose(node)) {
-      const decomposition = await this.agent.decomposeGoal(node, urgency, focus);
+      const decomposition = await this.agent.decomposeGoal(node, urgency, null);
       decomposition.children.forEach((child) => {
         this.treeManager.addNode(child, node.id);
       });
@@ -266,8 +265,8 @@ export class StrategicManager {
    * Check and re-decompose goals if needed
    */
   async checkAndRedecomposeGoals(
-    urgency: UrgencyLevel,
-    focus: FocusState | null
+    urgency: TaskUrgency,
+    focus: null
   ): Promise<number> {
     // Use internal tree structure directly instead of getTree() which serializes
     // Get all nodes from the tree manager's internal Map
@@ -278,7 +277,7 @@ export class StrategicManager {
     for (const node of allNodes) {
       if (node.type === "goal" && node.goalStatus === "active") {
         if (await this.agent.shouldDecompose(node)) {
-          const decomposition = await this.agent.decomposeGoal(node, urgency, focus);
+          const decomposition = await this.agent.decomposeGoal(node, urgency, null);
           decomposition.children.forEach((child) => {
             this.treeManager.addNode(child, node.id);
           });

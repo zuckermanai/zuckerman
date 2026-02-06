@@ -4,7 +4,6 @@
  */
 
 import type { GoalTaskNode } from "../types.js";
-import type { FocusState } from "../../attention/types.js";
 import type { LLMMessage } from "@server/world/providers/llm/types.js";
 import { LLMManager } from "@server/world/providers/llm/index.js";
 
@@ -27,7 +26,7 @@ export class SwitchingAgent {
   async decideSwitch(
     currentTask: GoalTaskNode | null,
     newTask: GoalTaskNode,
-    currentFocus: FocusState | null
+    currentFocus: null
   ): Promise<SwitchingDecision> {
     if (!currentTask) {
       return {
@@ -45,24 +44,12 @@ export class SwitchingAgent {
 
     try {
       const model = await this.llmManager.fast();
-      const timeAgo = currentFocus 
-        ? Math.round((Date.now() - currentFocus.lastUpdated) / 1000)
-        : 0;
-      const timeAgoText = timeAgo < 60 ? `${timeAgo}s ago` : `${Math.round(timeAgo / 60)}m ago`;
 
       const systemPrompt = `You are responsible for task switching decisions. Your role is to decide when to switch from one task to another.
 
 Given the current task and a new task, decide if we should switch. Return your decision as JSON.`;
 
-      const context = `Current Focus:
-${currentFocus ? `- Topic: ${currentFocus.currentTopic}
-- Task: ${currentFocus.currentTask || "none"}
-- Turn Count: ${currentFocus.turnCount}
-- Urgency: ${currentFocus.urgency}
-- Last Updated: ${timeAgoText}
-- Focus Level: ${currentFocus.focusLevel}` : "No focus state"}
-
-Current Task:
+      const context = `Current Task:
 - Title: ${currentTask.title}
 - Urgency: ${currentTask.type === "task" ? (currentTask.urgency || "medium") : "N/A"}
 - Progress: ${currentTask.progress || 0}%

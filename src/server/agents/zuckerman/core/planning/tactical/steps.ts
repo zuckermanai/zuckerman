@@ -3,9 +3,7 @@
  * Manages step-by-step task execution
  */
 
-import type { GoalTaskNode } from "../types.js";
-import type { UrgencyLevel } from "../../attention/types.js";
-import type { FocusState } from "../../attention/types.js";
+import type { GoalTaskNode, TaskUrgency } from "../types.js";
 import { TacticalAgent } from "./agent.js";
 import { LLMManager } from "@server/world/providers/llm/index.js";
 import type { LLMMessage } from "@server/world/providers/llm/types.js";
@@ -40,10 +38,10 @@ export class StepSequenceManager {
    */
   async decomposeWithLLM(
     message: string,
-    urgency: UrgencyLevel,
-    focus: FocusState | null
+    urgency: TaskUrgency,
+    focus: null
   ): Promise<TaskStep[]> {
-    return this.agent.decomposeTask(message, urgency, focus);
+    return this.agent.decomposeTask(message, urgency, null);
   }
 
   /**
@@ -51,8 +49,8 @@ export class StepSequenceManager {
    */
   async decomposeWithLLMLegacy(
     message: string,
-    urgency: UrgencyLevel,
-    focus: FocusState | null
+    urgency: TaskUrgency,
+    focus: null
   ): Promise<TaskStep[]> {
     const llmManager = LLMManager.getInstance();
     const model = await llmManager.fastCheap();
@@ -90,9 +88,7 @@ If stepsRequired is false, return an empty steps array.
 
 Return ONLY valid JSON, no other text.`;
 
-    const context = focus
-      ? `Current focus: ${focus.currentTopic}${focus.currentTask ? ` (task: ${focus.currentTask})` : ""}\nUrgency: ${urgency}\n\nTask: ${message}`
-      : `Urgency: ${urgency}\n\nTask: ${message}`;
+    const context = `Urgency: ${urgency}\n\nTask: ${message}`;
 
     const messages: LLMMessage[] = [
       { role: "system", content: systemPrompt },
