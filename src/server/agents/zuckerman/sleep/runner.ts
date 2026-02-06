@@ -85,7 +85,7 @@ export async function runSleepModeIfNeeded(params: {
     const memoryManager = UnifiedMemoryManager.create(homedir);
     
     // Save consolidated memories (creates episodic/semantic memories automatically)
-    memoryManager.saveConsolidatedMemories(consolidatedMemories, conversationId);
+    memoryManager.onSleepEnded(consolidatedMemories, conversationId);
 
     // Update conversation entry with sleep metadata
     const updatedEntry = await conversationManager.updateConversationEntry(conversationId, (current) => ({

@@ -4,7 +4,7 @@ import type { SecurityContext } from "@server/world/execution/security/types.js"
 export type ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
 
 export interface StreamEvent {
-  type: "lifecycle" | "token" | "tool.call" | "tool.result" | "thinking" | "done" | "queue";
+  type: "lifecycle" | "token" | "tool.call" | "tool.result" | "thinking" | "done";
   data: {
     phase?: "start" | "end" | "error";
     error?: string;
@@ -17,49 +17,9 @@ export interface StreamEvent {
     tokensUsed?: number;
     toolsUsed?: string[];
     response?: string;
-    // Planning/step progress fields
-    steps?: Array<{
-      id: string;
-      title: string;
-      description?: string;
-      order: number;
-      requiresConfirmation: boolean;
-      confirmationReason?: string;
-    }>;
-    step?: {
-      id: string;
-      title: string;
-      description?: string;
-      order?: number;
-      requiresConfirmation?: boolean;
-      confirmationReason?: string;
-      completed?: boolean;
-      error?: string;
-    };
-    progress?: number;
-    confirmationRequired?: boolean;
-    fallbackTask?: {
-      id: string;
-      title: string;
-    };
-    // Queue update fields
-    agentId?: string;
-    queue?: unknown;
-    timestamp?: number;
     // Additional context fields
     message?: string;
-    currentTask?: {
-      id: string;
-      title: string;
-    };
-    queuedTask?: {
-      id: string;
-      title: string;
-    };
-    previousTask?: {
-      id: string;
-      title: string;
-    };
+    timestamp?: number;
   };
 }
 

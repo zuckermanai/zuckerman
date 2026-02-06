@@ -152,100 +152,15 @@ export interface MemoryManager {
   ): Promise<MemoryRetrievalResult>;
 
   /**
-   * Save consolidated memories from sleep mode
-   * Creates structured episodic/semantic memories
+   * Called when sleep mode ends
+   * Saves consolidated memories from sleep mode as structured episodic/semantic memories
    */
-  saveConsolidatedMemories(
+  onSleepEnded(
     memories: Array<{
       content: string;
       type: "fact" | "preference" | "decision" | "event" | "learning";
       importance: number;
     }>,
-    conversationId?: string
-  ): void;
-
-  /**
-   * Record goal creation event
-   */
-  onGoalCreated(
-    goalId: string,
-    title: string,
-    description?: string,
-    conversationId?: string
-  ): void;
-
-  /**
-   * Record task creation event
-   */
-  onTaskCreated(
-    taskId: string,
-    title: string,
-    description?: string,
-    urgency?: string,
-    parentId?: string,
-    conversationId?: string
-  ): void;
-
-  /**
-   * Record task completion event
-   */
-  onTaskCompleted(
-    taskId: string,
-    title: string,
-    result?: unknown,
-    executionTime?: number,
-    conversationId?: string
-  ): void;
-
-  /**
-   * Record task failure event
-   */
-  onTaskFailed(
-    taskId: string,
-    title: string,
-    error: string,
-    conversationId?: string
-  ): void;
-
-  /**
-   * Record step completion event
-   */
-  onStepCompleted(
-    taskId: string,
-    stepTitle: string,
-    stepOrder: number,
-    conversationId?: string
-  ): void;
-
-  /**
-   * Record step failure event
-   */
-  onStepFailed(
-    taskId: string,
-    stepTitle: string,
-    stepOrder: number,
-    error: string,
-    conversationId?: string
-  ): void;
-
-  /**
-   * Record fallback strategy triggered event
-   */
-  onFallbackTriggered(
-    originalTaskId: string,
-    originalTaskTitle: string,
-    fallbackTaskId: string,
-    fallbackTaskTitle: string,
-    error: string,
-    conversationId?: string
-  ): void;
-
-  /**
-   * Record goal completion event
-   */
-  onGoalCompleted(
-    goalId: string,
-    title: string,
     conversationId?: string
   ): void;
 }

@@ -5,7 +5,6 @@ import type { ToolExecutionContext, ToolResult } from "@server/agents/zuckerman/
 import { truncateOutput } from "@server/agents/zuckerman/tools/truncation.js";
 import { activityRecorder } from "@server/world/activity/index.js";
 import type { ZuckermanToolRegistry } from "@server/agents/zuckerman/tools/registry.js";
-import type { PlanningManager } from "../../planning/index.js";
 import type { StreamEventEmitter } from "./stream-emitter.js";
 import type { LLMService } from "./llm-service.js";
 
@@ -31,7 +30,6 @@ export class ToolExecutor {
   constructor(
     private agentId: string,
     private toolRegistry: ZuckermanToolRegistry,
-    private planningManager: PlanningManager,
     private streamEmitter: StreamEventEmitter,
     private llmService: LLMService
   ) {}
@@ -55,14 +53,6 @@ export class ToolExecutor {
       toolCalls,
     });
 
-    // Check if current step requires confirmation
-    const currentStep = this.planningManager.getCurrentStep();
-    if (currentStep?.requiresConfirmation) {
-      await this.streamEmitter.emitStepConfirmation(runId, currentStep);
-      // Note: In a real implementation, we'd wait for user confirmation here
-      // For now, we proceed automatically (can be enhanced later)
-    }
-
     // Execute tools
     const toolCallResults = await this.executeTools(
       toolCalls,
@@ -78,23 +68,11 @@ export class ToolExecutor {
     }
 
     // Run LLM again with tool results
-    let result;
-    try {
-      result = await this.llmService.call({
-        messages,
-        temperature,
-        tools: llmTools,
-      });
-    } catch (err) {
-      // If LLM call fails, mark task as failed
-      const currentTask = this.planningManager.getCurrentTask();
-      if (currentTask) {
-        const errorMessage = err instanceof Error ? err.message : String(err);
-        await this.planningManager.failCurrentTask(errorMessage);
-        await this.streamEmitter.emitQueueUpdate(this.agentId, this.planningManager.getQueueState());
-      }
-      throw err; // Re-throw to be caught by outer catch
-    }
+    const result = await this.llmService.call({
+      messages,
+      temperature,
+      tools: llmTools,
+    });
 
     // Handle nested tool calls (recursive)
     if (result.toolCalls && result.toolCalls.length > 0) {
@@ -102,18 +80,6 @@ export class ToolExecutor {
         ...params,
         toolCalls: result.toolCalls,
       });
-    }
-
-    // Check if task should be completed (no more tool calls, task is done)
-    const taskCompleted = await this.planningManager.checkAndCompleteTaskIfDone(
-      result.content,
-      !!result.toolCalls,
-      conversationId
-    );
-
-    // Emit queue update event if task was completed
-    if (taskCompleted) {
-      await this.streamEmitter.emitQueueUpdate(this.agentId, this.planningManager.getQueueState());
     }
 
     // Emit lifecycle end event
@@ -214,9 +180,6 @@ export class ToolExecutor {
           result,
         );
 
-        // Track step progress after tool execution
-        await this.handleStepProgress(result, conversationId, runId);
-
         // Convert result to string for LLM
         const resultContent = this.formatResultForLLM(result);
 
@@ -277,67 +240,6 @@ export class ToolExecutor {
       }
     }
     return result;
-  }
-
-  private async handleStepProgress(
-    result: unknown,
-    conversationId: ConversationId,
-    runId: string
-  ): Promise<void> {
-    const currentStep = this.planningManager.getCurrentStep();
-    if (!currentStep) return;
-
-    // Check if tool execution was successful
-    const isSuccess = typeof result === "object" && result && "success" in result
-      ? (result as { success?: boolean }).success !== false
-      : true;
-
-    if (isSuccess) {
-      // Complete current step on successful tool execution
-      this.planningManager.completeCurrentStep(result, conversationId);
-
-      // Stream step completion and progress
-      const steps = this.planningManager.getSteps();
-      const progress = steps.length > 0
-        ? Math.round((steps.filter(s => s.completed).length / steps.length) * 100)
-        : 0;
-
-      await this.streamEmitter.emitStepProgress(runId, currentStep, progress, true);
-
-      // Check if all steps are completed
-      if (this.planningManager.areAllStepsCompleted()) {
-        // Complete the task
-        await this.planningManager.completeCurrentTask(result, conversationId);
-        await this.streamEmitter.emitQueueUpdate(this.agentId, this.planningManager.getQueueState());
-      } else {
-        // Stream next step if available
-        const nextStep = this.planningManager.getCurrentStep();
-        if (nextStep) {
-          await this.streamEmitter.emitNextStep(runId, nextStep, progress);
-        }
-      }
-    } else {
-      // Handle step failure with contingency planning
-      const errorMsg = typeof result === "object" && result && "error" in result
-        ? String((result as { error?: string }).error || "Tool execution failed")
-        : "Tool execution failed";
-
-      const fallbackTask = await this.planningManager.handleStepFailure(
-        currentStep,
-        errorMsg,
-        conversationId
-      );
-
-      await this.streamEmitter.emitStepFailure(
-        runId,
-        currentStep,
-        errorMsg,
-        fallbackTask ? {
-          id: fallbackTask.id,
-          title: fallbackTask.title,
-        } : undefined
-      );
-    }
   }
 
   private formatResultForLLM(result: unknown): string {

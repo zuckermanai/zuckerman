@@ -2,7 +2,6 @@ import React from "react";
 import { Bot, User, MessageSquare } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import { JsonViewer } from "@/components/json-viewer";
-import { StepProgress } from "./step-progress";
 import type { Message } from "../../../../types/message";
 
 interface MessageItemProps {
@@ -110,17 +109,6 @@ export function MessageItem({ message, agentId, isSending }: MessageItemProps) {
             {message.content || (message.role === "assistant" && isSending ? "..." : "")}
           </ReactMarkdown>
         </div>
-        
-        {/* Step progress display */}
-        {message.steps && message.steps.length > 0 && (
-          <StepProgress
-            steps={message.steps}
-            currentStep={message.currentStep}
-            progress={message.stepProgress}
-            confirmationRequired={message.confirmationRequired}
-            fallbackTask={message.fallbackTask}
-          />
-        )}
         
         {message.toolCalls && message.toolCalls.length > 0 ? (
           <div className="mt-3">

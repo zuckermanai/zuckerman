@@ -1,5 +1,4 @@
 import type { StreamCallback, StreamEvent } from "@server/world/runtime/agents/types.js";
-import type { TaskStep } from "../../planning/tactical-executor.js";
 
 export class StreamEventEmitter {
   constructor(private stream?: StreamCallback) {}
@@ -51,17 +50,6 @@ export class StreamEventEmitter {
   }
 
 
-  async emitPlanMessage(runId: string, message: string): Promise<void> {
-    if (!this.stream) return;
-    await this.stream({
-      type: "lifecycle",
-      data: {
-        runId,
-        message,
-      },
-    });
-  }
-
   async emitToolCall(tool: string, toolArgs: Record<string, unknown>): Promise<void> {
     if (!this.stream) return;
     await this.stream({
@@ -80,100 +68,6 @@ export class StreamEventEmitter {
       data: {
         tool,
         toolResult,
-      },
-    });
-  }
-
-  async emitStepProgress(
-    runId: string,
-    step: TaskStep,
-    progress: number,
-    completed?: boolean
-  ): Promise<void> {
-    if (!this.stream) return;
-    await this.stream({
-      type: "lifecycle",
-      data: {
-        runId,
-        step: {
-          id: step.id,
-          title: step.title,
-          description: step.description,
-          order: step.order,
-          requiresConfirmation: step.requiresConfirmation,
-          confirmationReason: step.confirmationReason,
-          completed,
-        },
-        progress,
-      },
-    });
-  }
-
-  async emitStepConfirmation(runId: string, step: TaskStep): Promise<void> {
-    if (!this.stream) return;
-    await this.stream({
-      type: "lifecycle",
-      data: {
-        runId,
-        step: {
-          id: step.id,
-          title: step.title,
-          requiresConfirmation: true,
-          confirmationReason: step.confirmationReason,
-        },
-        confirmationRequired: true,
-      },
-    });
-  }
-
-  async emitStepFailure(
-    runId: string,
-    step: TaskStep,
-    error: string,
-    fallbackTask?: { id: string; title: string }
-  ): Promise<void> {
-    if (!this.stream) return;
-    await this.stream({
-      type: "lifecycle",
-      data: {
-        runId,
-        step: {
-          id: step.id,
-          title: step.title,
-          error,
-        },
-        fallbackTask,
-      },
-    });
-  }
-
-  async emitNextStep(runId: string, step: TaskStep, progress: number): Promise<void> {
-    if (!this.stream) return;
-    await this.stream({
-      type: "lifecycle",
-      data: {
-        runId,
-        step: {
-          id: step.id,
-          title: step.title,
-          description: step.description,
-          order: step.order,
-          requiresConfirmation: step.requiresConfirmation,
-          confirmationReason: step.confirmationReason,
-        },
-        progress,
-      },
-    });
-  }
-
-  async emitQueueUpdate(agentId: string, queueState: unknown): Promise<void> {
-    if (!this.stream) return;
-    await this.stream({
-      type: "queue",
-      data: {
-        agentId,
-        queue: queueState,
-        timestamp: Date.now(),
       },
     });
   }

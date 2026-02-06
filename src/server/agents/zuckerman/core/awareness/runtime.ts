@@ -11,7 +11,6 @@ import { resolveAgentHomedir } from "@server/world/homedir/resolver.js";
 import { UnifiedMemoryManager } from "@server/agents/zuckerman/core/memory/manager.js";
 import { activityRecorder } from "@server/world/activity/index.js";
 import { resolveMemorySearchConfig } from "@server/agents/zuckerman/core/memory/config.js";
-import { PlanningManager } from "../planning/index.js";
 import { StreamEventEmitter, MemoryHandler, MessageBuilder, LLMService, ToolExecutor } from "./services/index.js";
 
 export class ZuckermanAwareness implements AgentRuntime {
@@ -23,7 +22,6 @@ export class ZuckermanAwareness implements AgentRuntime {
   private toolRegistry: ZuckermanToolRegistry;
 
   private memoryManager: UnifiedMemoryManager | null = null;
-  private planningManager: PlanningManager;
   
   // Load prompts from agent's core directory (where markdown files are)
   private readonly agentDir: string;
@@ -34,10 +32,6 @@ export class ZuckermanAwareness implements AgentRuntime {
     this.toolRegistry = new ZuckermanToolRegistry();
     this.llmManager = llmManager || LLMManager.getInstance();
     this.promptLoader = promptLoader || new PromptLoader();
-    
-    // Initialize planning manager
-    // Memory manager will be set later when initialized
-    this.planningManager = new PlanningManager(this.agentId);
     
     // Get agent directory from discovery service
     const metadata = agentDiscovery.getMetadata(this.agentId);
@@ -53,8 +47,6 @@ export class ZuckermanAwareness implements AgentRuntime {
   private initializeMemoryManager(homedir: string): void {
     if (!this.memoryManager) {
       this.memoryManager = UnifiedMemoryManager.create(homedir, this.agentId);
-      // Set memory manager in planning manager for memory integration
-      this.planningManager.setMemoryManager(this.memoryManager);
     }
   }
 
@@ -161,9 +153,6 @@ export class ZuckermanAwareness implements AgentRuntime {
       const prompts = await this.loadPrompts();
       const systemPrompt = await this.buildSystemPrompt(prompts, homedir);
 
-      // Plan for the new message
-      await this.handlePlanning(message, conversationId, runId, streamEmitter);
-
       // Build messages with memory context
       const conversation = this.conversationManager.getConversation(conversationId) ?? null;
       const relevantMemoriesText = await memoryHandler.getRelevantMemoriesText(message);
@@ -199,7 +188,6 @@ export class ZuckermanAwareness implements AgentRuntime {
         const toolExecutor = new ToolExecutor(
           this.agentId,
           this.toolRegistry,
-          this.planningManager,
           streamEmitter,
           llmService
         );
@@ -214,17 +202,6 @@ export class ZuckermanAwareness implements AgentRuntime {
           homedir,
           agentId: this.agentId,
         });
-      }
-
-      // Check if task should be completed
-      const taskCompleted = await this.planningManager.checkAndCompleteTaskIfDone(
-        result.content,
-        !!result.toolCalls,
-        conversationId
-      );
-
-      if (taskCompleted) {
-        await streamEmitter.emitQueueUpdate(this.agentId, this.planningManager.getQueueState());
       }
 
       await streamEmitter.emitLifecycleEnd(runId, result.tokensUsed?.total);
@@ -247,13 +224,6 @@ export class ZuckermanAwareness implements AgentRuntime {
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : String(err);
 
-      // Mark current task as failed if there is one
-      const currentTask = this.planningManager.getCurrentTask();
-      if (currentTask) {
-        await this.planningManager.failCurrentTask(errorMessage);
-        await streamEmitter.emitQueueUpdate(this.agentId, this.planningManager.getQueueState());
-      }
-
       await streamEmitter.emitLifecycleError(runId, errorMessage);
 
       await activityRecorder.recordAgentRunError(
@@ -267,33 +237,9 @@ export class ZuckermanAwareness implements AgentRuntime {
     }
   }
 
-  private async handlePlanning(
-    message: string,
-    conversationId: string,
-    runId: string,
-    streamEmitter: StreamEventEmitter
-  ): Promise<void> {
-    const planResult = await this.planningManager.plan(
-      message,
-      "medium",
-      conversationId
-    );
-
-    // Emit LLM-generated message
-    await streamEmitter.emitPlanMessage(runId, planResult.message);
-  }
-
-
   clearCache(): void {
     this.promptCacheClear();
     this.llmManager.clearCache();
-  }
-
-  /**
-   * Get planning manager instance
-   */
-  getPlanningManager(): PlanningManager {
-    return this.planningManager;
   }
 
   private promptCacheClear(): void {
