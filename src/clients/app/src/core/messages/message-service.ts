@@ -33,7 +33,7 @@ export class MessageService {
    */
   transformMessages(backendMessages: BackendMessage[]): Message[] {
     return backendMessages.map((msg) => ({
-      role: msg.role as "user" | "assistant" | "system",
+      role: msg.role as "user" | "assistant" | "system" | "tool",
       content: msg.content,
       timestamp: msg.timestamp || Date.now(),
       rawResponse: undefined,
@@ -42,6 +42,7 @@ export class MessageService {
         name: string;
         arguments: string;
       }> | undefined,
+      toolCallId: msg.toolCallId,
     }));
   }
 

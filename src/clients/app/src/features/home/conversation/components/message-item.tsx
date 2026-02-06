@@ -1,7 +1,9 @@
 import React from "react";
-import { Bot, User, MessageSquare } from "lucide-react";
+import { Bot, User, MessageSquare, Wrench } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import { JsonViewer } from "@/components/json-viewer";
+import { ToolCallsViewer } from "@/components/tool-calls-viewer";
+import { ToolResultViewer } from "@/components/tool-result-viewer";
 import type { Message } from "../../../../types/message";
 
 interface MessageItemProps {
@@ -11,6 +13,11 @@ interface MessageItemProps {
 }
 
 export function MessageItem({ message, agentId, isSending }: MessageItemProps) {
+  // Check if system message looks like a tool result (JSON content)
+  const isSystemToolResult = message.role === "system" && 
+    message.content.trim().startsWith("{") && 
+    message.content.trim().endsWith("}");
+
   return (
     <div
       key={`${message.role}-${message.timestamp}`}
@@ -22,6 +29,8 @@ export function MessageItem({ message, agentId, isSending }: MessageItemProps) {
           <Bot className="h-5 w-5 text-muted-foreground" />
         ) : message.role === "user" ? (
           <User className="h-5 w-5 text-muted-foreground" />
+        ) : message.role === "tool" || isSystemToolResult ? (
+          <Wrench className="h-5 w-5 text-muted-foreground" />
         ) : (
           <MessageSquare className="h-5 w-5 text-muted-foreground" />
         )}
@@ -33,6 +42,8 @@ export function MessageItem({ message, agentId, isSending }: MessageItemProps) {
               ? "You"
               : message.role === "assistant"
               ? agentId || "Assistant"
+              : message.role === "tool" || isSystemToolResult
+              ? "Tool Result"
               : "System"}
           </span>
           <span className="text-xs text-muted-foreground">
@@ -45,97 +56,100 @@ export function MessageItem({ message, agentId, isSending }: MessageItemProps) {
             <span className="text-xs text-muted-foreground/60 italic">typing...</span>
           )}
         </div>
-        <div className="text-sm text-foreground leading-relaxed break-words" style={{ color: 'hsl(var(--foreground))' }}>
-          <ReactMarkdown
-            components={{
-              p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
-              strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
-              em: ({ children }) => <em className="italic">{children}</em>,
-              code: ({ children, className }) => {
-                const isInline = !className;
-                return isInline ? (
-                  <code className="px-1.5 py-0.5 rounded bg-muted text-foreground text-xs font-mono">{children}</code>
-                ) : (
-                  <code className="block p-3 rounded-md bg-muted text-foreground text-xs font-mono overflow-x-auto">{children}</code>
-                );
-              },
-              pre: ({ children }) => <pre className="mb-2 last:mb-0">{children}</pre>,
-              ul: ({ children }) => <ul className="list-disc list-inside mb-2 space-y-1">{children}</ul>,
-              ol: ({ children }) => <ol className="list-decimal list-inside mb-2 space-y-1">{children}</ol>,
-              li: ({ children }) => <li className="ml-4">{children}</li>,
-              blockquote: ({ children }) => <blockquote className="border-l-4 border-border pl-4 italic my-2">{children}</blockquote>,
-              h1: ({ children }) => <h1 className="text-xl font-bold mb-2 mt-4 first:mt-0">{children}</h1>,
-              h2: ({ children }) => <h2 className="text-lg font-bold mb-2 mt-4 first:mt-0">{children}</h2>,
-              h3: ({ children }) => <h3 className="text-base font-bold mb-2 mt-4 first:mt-0">{children}</h3>,
-              a: ({ children, href, node, ...props }) => {
-                if (!href) {
-                  return <span className="text-primary underline">{children}</span>;
-                }
-                const handleClick = async (e: React.MouseEvent<HTMLAnchorElement>) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  if (href) {
-                    // Use Electron API if available, otherwise fallback to window.open
-                    if (typeof window !== 'undefined' && (window as any).electronAPI?.openExternal) {
-                      try {
-                        await (window as any).electronAPI.openExternal(href);
-                      } catch (error) {
-                        console.error('Failed to open external URL:', error);
-                        // Fallback to window.open if Electron API fails
-                        window.open(href, '_blank', 'noopener,noreferrer');
-                      }
-                    } else {
-                      // Fallback for web environment
-                      window.open(href, '_blank', 'noopener,noreferrer');
+        {message.role === "tool" || isSystemToolResult ? (
+          <ToolResultViewer content={message.content} toolCallId={message.toolCallId} />
+        ) : (
+          <>
+            <div className="text-sm text-foreground leading-relaxed break-words" style={{ color: 'hsl(var(--foreground))' }}>
+              <ReactMarkdown
+                components={{
+                  p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
+                  strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
+                  em: ({ children }) => <em className="italic">{children}</em>,
+                  code: ({ children, className }) => {
+                    const isInline = !className;
+                    return isInline ? (
+                      <code className="px-1.5 py-0.5 rounded bg-muted text-foreground text-xs font-mono">{children}</code>
+                    ) : (
+                      <code className="block p-3 rounded-md bg-muted text-foreground text-xs font-mono overflow-x-auto">{children}</code>
+                    );
+                  },
+                  pre: ({ children }) => <pre className="mb-2 last:mb-0">{children}</pre>,
+                  ul: ({ children }) => <ul className="list-disc list-inside mb-2 space-y-1">{children}</ul>,
+                  ol: ({ children }) => <ol className="list-decimal list-inside mb-2 space-y-1">{children}</ol>,
+                  li: ({ children }) => <li className="ml-4">{children}</li>,
+                  blockquote: ({ children }) => <blockquote className="border-l-4 border-border pl-4 italic my-2">{children}</blockquote>,
+                  h1: ({ children }) => <h1 className="text-xl font-bold mb-2 mt-4 first:mt-0">{children}</h1>,
+                  h2: ({ children }) => <h2 className="text-lg font-bold mb-2 mt-4 first:mt-0">{children}</h2>,
+                  h3: ({ children }) => <h3 className="text-base font-bold mb-2 mt-4 first:mt-0">{children}</h3>,
+                  a: ({ children, href, node, ...props }) => {
+                    if (!href) {
+                      return <span className="text-primary underline">{children}</span>;
                     }
+                    const handleClick = async (e: React.MouseEvent<HTMLAnchorElement>) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      if (href) {
+                        // Use Electron API if available, otherwise fallback to window.open
+                        if (typeof window !== 'undefined' && (window as any).electronAPI?.openExternal) {
+                          try {
+                            await (window as any).electronAPI.openExternal(href);
+                          } catch (error) {
+                            console.error('Failed to open external URL:', error);
+                            // Fallback to window.open if Electron API fails
+                            window.open(href, '_blank', 'noopener,noreferrer');
+                          }
+                        } else {
+                          // Fallback for web environment
+                          window.open(href, '_blank', 'noopener,noreferrer');
+                        }
+                      }
+                    };
+                    return (
+                      <a 
+                        {...props}
+                        href={href} 
+                        className="text-primary underline hover:text-primary/80 cursor-pointer" 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        onClick={handleClick}
+                        style={{ pointerEvents: 'auto', position: 'relative', zIndex: 10 }}
+                      >
+                        {children}
+                    </a>
+                    );
+                  },
+                }}
+              >
+                {message.content || (message.role === "assistant" && isSending ? "..." : "")}
+              </ReactMarkdown>
+            </div>
+            
+            {message.toolCalls && message.toolCalls.length > 0 ? (
+              <ToolCallsViewer
+                toolCalls={message.toolCalls.map(tc => {
+                  let parsedArgs: unknown;
+                  try {
+                    parsedArgs = JSON.parse(tc.arguments);
+                  } catch {
+                    parsedArgs = tc.arguments;
                   }
-                };
-                return (
-                  <a 
-                    {...props}
-                    href={href} 
-                    className="text-primary underline hover:text-primary/80 cursor-pointer" 
-                    target="_blank" 
-                    rel="noopener noreferrer"
-                    onClick={handleClick}
-                    style={{ pointerEvents: 'auto', position: 'relative', zIndex: 10 }}
-                  >
-                    {children}
-                </a>
-                );
-              },
-            }}
-          >
-            {message.content || (message.role === "assistant" && isSending ? "..." : "")}
-          </ReactMarkdown>
-        </div>
-        
-        {message.toolCalls && message.toolCalls.length > 0 ? (
-          <div className="mt-3">
-            <JsonViewer 
-              data={message.toolCalls.map(tc => {
-                let parsedArgs: unknown;
-                try {
-                  parsedArgs = JSON.parse(tc.arguments);
-                } catch {
-                  parsedArgs = tc.arguments;
-                }
-                return {
-                  id: tc.id,
-                  name: tc.name,
-                  arguments: parsedArgs,
-                };
-              })} 
-              title="Tools Used" 
-            />
-          </div>
-        ) : null}
-        
-        {message.rawResponse ? (
-          <div className="mt-3">
-            <JsonViewer data={message.rawResponse} title="Raw JSON Response" />
-          </div>
-        ) : null}
+                  return {
+                    id: tc.id,
+                    name: tc.name,
+                    arguments: parsedArgs,
+                  };
+                })}
+              />
+            ) : null}
+            
+            {message.rawResponse ? (
+              <div className="mt-3">
+                <JsonViewer data={message.rawResponse} title="Raw JSON Response" />
+              </div>
+            ) : null}
+          </>
+        )}
       </div>
     </div>
   );
