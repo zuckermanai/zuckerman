@@ -5,7 +5,7 @@ import { loadConfig } from "@server/world/config/index.js";
 import { ConversationManager } from "@server/agents/zuckerman/conversations/index.js";
 import { ZuckermanToolRegistry } from "@server/agents/zuckerman/tools/registry.js";
 import { LLMManager } from "@server/world/providers/llm/index.js";
-import { PromptLoader, type LoadedPrompts } from "../identity/identity-loader.js";
+import { IdentityLoader, type LoadedPrompts } from "../identity/identity-loader.js";
 import { agentDiscovery } from "@server/agents/discovery.js";
 import { resolveAgentHomedir } from "@server/world/homedir/resolver.js";
 import { UnifiedMemoryManager } from "@server/agents/zuckerman/core/memory/manager.js";
@@ -20,22 +20,21 @@ import { StreamEventEmitter } from "@server/world/communication/stream-emitter.j
 export class ZuckermanAwareness implements AgentRuntime {
   readonly agentId = "zuckerman";
   
-  private promptLoader: PromptLoader;
+  private identityLoader: IdentityLoader;
   private llmManager: LLMManager;
   private conversationManager: ConversationManager;
   private toolRegistry: ZuckermanToolRegistry;
-
-  private memoryManager: UnifiedMemoryManager | null = null;
+  private memoryManager!: UnifiedMemoryManager;
   
   // Load prompts from agent's core directory (where markdown files are)
   private readonly agentDir: string;
 
-  constructor(conversationManager?: ConversationManager, llmManager?: LLMManager, promptLoader?: PromptLoader) {
+  constructor(conversationManager?: ConversationManager, llmManager?: LLMManager, identityLoader?: IdentityLoader) {
     this.conversationManager = conversationManager || new ConversationManager(this.agentId);
     // Initialize tool registry without conversationId - will be set per-run
     this.toolRegistry = new ZuckermanToolRegistry();
     this.llmManager = llmManager || LLMManager.getInstance();
-    this.promptLoader = promptLoader || new PromptLoader();
+    this.identityLoader = identityLoader || new IdentityLoader();
     
     // Get agent directory from discovery service
     const metadata = agentDiscovery.getMetadata(this.agentId);
@@ -46,41 +45,20 @@ export class ZuckermanAwareness implements AgentRuntime {
   }
 
   /**
-   * Initialize memory manager with homedir directory
-   */
-  private initializeMemoryManager(homedir: string): void {
-    if (!this.memoryManager) {
-      this.memoryManager = UnifiedMemoryManager.create(homedir, this.agentId);
-    }
-  }
-
-  /**
-   * Get memory manager instance (must be initialized first)
-   */
-  private getMemoryManager(): UnifiedMemoryManager {
-    if (!this.memoryManager) {
-      throw new Error("Memory manager not initialized. Call initializeMemoryManager first.");
-    }
-    return this.memoryManager;
-  }
-
-  /**
    * Initialize the agent - called once when agent is created
    */
   async initialize(): Promise<void> {
     try {
       const config = await loadConfig();
       const homedir = resolveAgentHomedir(config, this.agentId);
-      
-      // Initialize memory manager
-      this.initializeMemoryManager(homedir);
+      this.memoryManager = UnifiedMemoryManager.create(homedir, this.agentId);
       
       // Initialize database for vector search if memory search is enabled
       const memorySearchConfig = config.agent?.memorySearch;
       if (memorySearchConfig) {
         const resolvedConfig = resolveMemorySearchConfig(memorySearchConfig, homedir, this.agentId);
         if (resolvedConfig) {
-          await this.getMemoryManager().initializeDatabase(resolvedConfig, this.agentId);
+          await this.memoryManager.initializeDatabase(resolvedConfig, this.agentId);
         }
       }
     } catch (error) {
@@ -88,33 +66,6 @@ export class ZuckermanAwareness implements AgentRuntime {
       console.warn(`[ZuckermanRuntime] Initialization failed:`, message);
       // Continue without database - memory search will be disabled
     }
-  }
-
-  async loadPrompts(): Promise<LoadedPrompts> {
-    return this.promptLoader.loadPrompts(this.agentDir);
-  }
-
-  async buildSystemPrompt(
-    prompts: LoadedPrompts,
-    homedir?: string,
-  ): Promise<string> {
-    const basePrompt = this.promptLoader.buildSystemPrompt(prompts);
-    const parts: string[] = [basePrompt];
-    
-    
-    // Add tool information to system prompt
-    const tools = this.toolRegistry.list();
-    if (tools.length > 0) {
-      const toolDescriptions = tools.map((tool) => {
-        return `- **${tool.definition.name}**: ${tool.definition.description}`;
-      }).join("\n");
-      
-      const toolSection = `\n\n## Available Tools\n\nUse these tools to perform actions. When you need to execute a command, read a file, or perform any operation, call the appropriate tool with the required parameters. Tools execute operations directly - you don't need to show commands or code.\n\n${toolDescriptions}`;
-      
-      parts.push(toolSection);
-    }
-    
-    return parts.join("\n\n---\n\n");
   }
 
   /**
@@ -132,16 +83,12 @@ export class ZuckermanAwareness implements AgentRuntime {
     const llmModel = await this.llmManager.fastCheap();
     const homedir = resolveAgentHomedir(config, this.agentId);
 
-    // Initialize memory manager if not already initialized
-    this.initializeMemoryManager(homedir);
-    const memoryManager = this.getMemoryManager();
-
     // Load prompts and build system prompt
-    const prompts = await this.loadPrompts();
-    const systemPrompt = await this.buildSystemPrompt(prompts, homedir);
+    const prompts = await this.identityLoader.loadPrompts(this.agentDir);
+    const systemPrompt = this.identityLoader.buildSystemPrompt(prompts);
 
     // Prepare tools for LLM
-    const llmTools: LLMTool[] = this.toolRegistry.list().map(t => ({
+    const availableTools: LLMTool[] = this.toolRegistry.list().map(t => ({
       type: "function" as const,
       function: t.definition
     }));
@@ -155,13 +102,13 @@ export class ZuckermanAwareness implements AgentRuntime {
       temperature,
       securityContext,
       homedir,
-      memoryManager,
+      memoryManager: this.memoryManager,
       toolRegistry: this.toolRegistry,
       llmModel,
       streamEmitter: new StreamEventEmitter(stream),
       conversation: this.conversationManager.getConversation(conversationId) ?? null,
       messages: [],
-      llmTools,
+      availableTools,
       systemPrompt,
       relevantMemoriesText: "",
     };
@@ -223,7 +170,7 @@ export class ZuckermanAwareness implements AgentRuntime {
         const result = await llmService.call({
           messages: context.messages,
           temperature: context.temperature,
-          tools: context.llmTools,
+          availableTools: context.availableTools,
         });
 
         // If no tool calls, we're done
@@ -279,19 +226,6 @@ export class ZuckermanAwareness implements AgentRuntime {
       
       console.error(`[ZuckermanRuntime] Error in run:`, err);
       throw err;
-    }
-  }
-
-  clearCache(): void {
-    this.promptCacheClear();
-    this.llmManager.clearCache();
-  }
-
-  private promptCacheClear(): void {
-    if (this.agentDir) {
-      this.promptLoader.clearCache(this.agentDir);
-    } else {
-      this.promptLoader.clearCache();
     }
   }
 }

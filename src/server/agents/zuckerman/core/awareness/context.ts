@@ -34,7 +34,7 @@ export interface RunContext {
   
   // Execution state (built during run)
   messages: LLMMessage[];
-  llmTools: LLMTool[];
+  availableTools: LLMTool[];
   systemPrompt: string;
   relevantMemoriesText: string;
 }

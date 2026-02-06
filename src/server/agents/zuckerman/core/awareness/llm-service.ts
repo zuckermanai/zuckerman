@@ -57,9 +57,9 @@ export class LLMService {
   async call(params: {
     messages: LLMMessage[];
     temperature?: number;
-    tools: LLMTool[];
+    availableTools: LLMTool[];
   }): Promise<LLMCallResult> {
-    const { messages, temperature, tools } = params;
+    const { messages, temperature, availableTools } = params;
 
     // Try streaming first if requested and model supports it
     if (this.streamEmitter) {
@@ -69,7 +69,7 @@ export class LLMService {
       try {
         // For now, only use pure streaming when no tools are available
         // Most providers don't support streaming with tools properly
-        if (tools.length === 0) {
+        if (availableTools.length === 0) {
           // Pure streaming - no tools needed
           for await (const token of this.model.stream({
             messages,
@@ -106,7 +106,7 @@ export class LLMService {
     const result = await this.model.call({
       messages,
       temperature,
-      tools,
+      tools: availableTools,
     });
 
     // If streaming was requested but we used non-streaming (due to tools or failure),

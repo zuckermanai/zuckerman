@@ -229,7 +229,6 @@ export class UnifiedMemoryManager implements MemoryManager {
     // Fetch semantic memories (facts, knowledge)
     if (types.includes("semantic")) {
       const semanticMemories = this.semanticMemory.getAll();
-      console.log(`[UnifiedMemoryManager] Semantic memories:`, semanticMemories);
       allMemories.push(...semanticMemories);
     }
 

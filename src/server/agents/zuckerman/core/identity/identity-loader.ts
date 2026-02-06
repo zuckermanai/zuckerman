@@ -9,7 +9,7 @@ export interface LoadedPrompts {
 /**
  * Service for loading and managing agent prompts from markdown files
  */
-export class PromptLoader {
+export class IdentityLoader {
   private promptCache: Map<string, LoadedPrompts> = new Map();
 
   /**
@@ -40,13 +40,13 @@ export class PromptLoader {
               const fileName = file.replace(".md", "");
               prompts.files.set(fileName, content);
             } catch (err) {
-              console.warn(`[PromptLoader] Failed to load ${filePath}:`, err);
+              console.warn(`[IdentityLoader] Failed to load ${filePath}:`, err);
             }
           }
         }
       }
     } catch (err) {
-      console.warn(`[PromptLoader] Failed to read identity directory:`, err);
+      console.warn(`[IdentityLoader] Failed to read identity directory:`, err);
     }
 
     this.promptCache.set(agentDir, prompts);
