@@ -1,6 +1,7 @@
 import React from "react";
 import { Bot, User, MessageSquare, Wrench } from "lucide-react";
 import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { JsonViewer } from "@/components/json-viewer";
 import { ToolCallsViewer } from "@/components/tool-calls-viewer";
 import { ToolResultViewer } from "@/components/tool-result-viewer";
@@ -62,6 +63,7 @@ export function MessageItem({ message, agentId, isSending }: MessageItemProps) {
           <>
             <div className="text-sm text-foreground leading-relaxed break-words" style={{ color: 'hsl(var(--foreground))' }}>
               <ReactMarkdown
+                remarkPlugins={[remarkGfm]}
                 components={{
                   p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
                   strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
@@ -119,6 +121,32 @@ export function MessageItem({ message, agentId, isSending }: MessageItemProps) {
                     </a>
                     );
                   },
+                  table: ({ children }) => (
+                    <div className="my-4 overflow-x-auto">
+                      <table className="min-w-full border-collapse border border-border">
+                        {children}
+                      </table>
+                    </div>
+                  ),
+                  thead: ({ children }) => (
+                    <thead className="bg-muted">{children}</thead>
+                  ),
+                  tbody: ({ children }) => (
+                    <tbody>{children}</tbody>
+                  ),
+                  tr: ({ children }) => (
+                    <tr className="border-b border-border">{children}</tr>
+                  ),
+                  th: ({ children }) => (
+                    <th className="border border-border px-4 py-2 text-left font-semibold text-foreground">
+                      {children}
+                    </th>
+                  ),
+                  td: ({ children }) => (
+                    <td className="border border-border px-4 py-2 text-foreground">
+                      {children}
+                    </td>
+                  ),
                 }}
               >
                 {message.content || (message.role === "assistant" && isSending ? "..." : "")}
