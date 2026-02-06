@@ -103,13 +103,13 @@ export function createAgentHandlers(
         }
 
         // Resolve homedir directory for this agent
-        const homedirDir = resolveAgentHomedir(config, agentId);
+        const homedir = resolveAgentHomedir(config, agentId);
         const securityContext = await resolveSecurityContext(
           config.security,
           actualConversationId,
           conversation.conversation.type,
           agentId,
-          homedirDir,
+          homedir,
         );
 
         // Add user message to conversation (use actualConversationId, not the original conversationId)

@@ -160,4 +160,4 @@ export function resolveAgentRoute(input: ResolveRouteInput): ResolvedRoute {
 
 // Homedir resolution in world/homedir/resolver
 // Re-export for backward compatibility
-export { resolveAgentHomedirDir as resolveAgentHomedir } from "@server/world/homedir/resolver.js";
+export { resolveAgentHomedir as resolveAgentHomedir } from "@server/world/homedir/resolver.js";

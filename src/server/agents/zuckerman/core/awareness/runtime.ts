@@ -11,7 +11,7 @@ import { LLMManager, LLMModel } from "@server/world/providers/llm/index.js";
 import { PromptLoader, type LoadedPrompts } from "../identity/identity-loader.js";
 import { agentDiscovery } from "@server/agents/discovery.js";
 import {
-  resolveAgentHomedirDir,
+  resolveAgentHomedir,
 } from "@server/world/homedir/resolver.js";
 import { UnifiedMemoryManager } from "@server/agents/zuckerman/core/memory/manager.js";
 import type { SemanticMemory, EpisodicMemory, ProceduralMemory } from "@server/agents/zuckerman/core/memory/types.js";
@@ -68,9 +68,9 @@ export class ZuckermanAwareness implements AgentRuntime {
   /**
    * Initialize memory manager with homedir directory
    */
-  private initializeMemoryManager(homedirDir: string): void {
+  private initializeMemoryManager(homedir: string): void {
     if (!this.memoryManager) {
-      this.memoryManager = UnifiedMemoryManager.create(homedirDir, this.agentId);
+      this.memoryManager = UnifiedMemoryManager.create(homedir, this.agentId);
       // Set memory manager in planning manager for memory integration
       this.planningManager.setMemoryManager(this.memoryManager);
     }
@@ -92,15 +92,15 @@ export class ZuckermanAwareness implements AgentRuntime {
   async initialize(): Promise<void> {
     try {
       const config = await loadConfig();
-      const homedirDir = resolveAgentHomedirDir(config, this.agentId);
+      const homedir = resolveAgentHomedir(config, this.agentId);
       
       // Initialize memory manager
-      this.initializeMemoryManager(homedirDir);
+      this.initializeMemoryManager(homedir);
       
       // Initialize database for vector search if memory search is enabled
       const memorySearchConfig = config.agent?.memorySearch;
       if (memorySearchConfig) {
-        const resolvedConfig = resolveMemorySearchConfig(memorySearchConfig, homedirDir, this.agentId);
+        const resolvedConfig = resolveMemorySearchConfig(memorySearchConfig, homedir, this.agentId);
         if (resolvedConfig) {
           await this.getMemoryManager().initializeDatabase(resolvedConfig, this.agentId);
         }
@@ -118,7 +118,7 @@ export class ZuckermanAwareness implements AgentRuntime {
 
   async buildSystemPrompt(
     prompts: LoadedPrompts,
-    homedirDir?: string,
+    homedir?: string,
   ): Promise<string> {
     const basePrompt = this.promptLoader.buildSystemPrompt(prompts);
     const parts: string[] = [basePrompt];
@@ -171,10 +171,10 @@ export class ZuckermanAwareness implements AgentRuntime {
       const defaultModel = await this.llmManager.fastCheap();
 
       // Resolve homedir directory
-      const homedirDir = resolveAgentHomedirDir(config, this.agentId);
+      const homedir = resolveAgentHomedir(config, this.agentId);
 
       // Initialize memory manager if not already initialized
-      this.initializeMemoryManager(homedirDir);
+      this.initializeMemoryManager(homedir);
 
       // Check if sleep mode is needed before processing the message
       // This processes and consolidates memories periodically
@@ -183,14 +183,14 @@ export class ZuckermanAwareness implements AgentRuntime {
         conversationManager: this.conversationManager,
         conversationId,
         agentId: this.agentId,
-        homedirDir,
+        homedir,
       });
       
       // Load prompts
       const prompts = await this.loadPrompts();
       
       // ensuring we always have the latest semantic memories
-      const systemPrompt = await this.buildSystemPrompt(prompts, homedirDir);
+      const systemPrompt = await this.buildSystemPrompt(prompts, homedir);
 
       // Process attention - analyze focus and urgency
       let attentionState = await this.attentionController.processMessage(
@@ -435,7 +435,7 @@ export class ZuckermanAwareness implements AgentRuntime {
       let relevantMemoriesText = "";
       try {
         const memoryResult = await this.getMemoryManager().getRelevantMemories(message, {
-          limit: 10,
+          limit: 50,
           types: ["semantic", "episodic", "procedural"],
         });
 
@@ -467,9 +467,11 @@ export class ZuckermanAwareness implements AgentRuntime {
         console.warn(`[ZuckermanRuntime] Memory retrieval failed:`, memoryError);
       }
 
+      console.log(`[ZuckermanRuntime] Relevant memories:`, relevantMemoriesText);
+
       // Add current user message with relevant memories context
       messages.push({ 
-        role: "user", 
+        role: "system", 
         content: relevantMemoriesText ? `${message}${relevantMemoriesText}` : message 
       });
 
@@ -513,7 +515,7 @@ export class ZuckermanAwareness implements AgentRuntime {
           stream,
           temperature,
           llmTools,
-          homedirDir,
+          homedir,
         });
       }
 
@@ -734,9 +736,9 @@ export class ZuckermanAwareness implements AgentRuntime {
     stream?: StreamCallback;
     temperature?: number;
     llmTools: LLMTool[];
-    homedirDir: string;
+    homedir: string;
   }): Promise<AgentRunResult> {
-    const { conversationId, runId, messages, toolCalls, securityContext, stream, temperature, llmTools, homedirDir } = params;
+    const { conversationId, runId, messages, toolCalls, securityContext, stream, temperature, llmTools, homedir } = params;
     
     // Select model for tool calls (fastCheap for efficiency)
     const model = await this.llmManager.fastCheap();
@@ -826,7 +828,7 @@ export class ZuckermanAwareness implements AgentRuntime {
         // Create execution context for tool
         const executionContext: ToolExecutionContext = {
           conversationId,
-          homedirDir,
+          homedir,
           stream: stream
             ? (event) => {
                 stream({
@@ -1090,7 +1092,7 @@ export class ZuckermanAwareness implements AgentRuntime {
         stream,
         temperature,
         llmTools,
-        homedirDir: params.homedirDir,
+        homedir: params.homedir,
       });
     }
 

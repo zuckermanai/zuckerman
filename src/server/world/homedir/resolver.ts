@@ -14,7 +14,7 @@ export function getDefaultWorkspaceDir(agentId: string): string {
 /**
  * Resolve homedir directory for an agent
  */
-export function resolveAgentHomedirDir(
+export function resolveAgentHomedir(
   config: ZuckermanConfig,
   agentId: string,
 ): string {
@@ -53,8 +53,8 @@ function expandPath(path: string): string {
 /**
  * Ensure homedir directory exists
  */
-export function ensureHomedirDir(homedirDir: string): void {
-  if (!existsSync(homedirDir)) {
-    mkdirSync(homedirDir, { recursive: true });
+export function ensureHomedir(homedir: string): void {
+  if (!existsSync(homedir)) {
+    mkdirSync(homedir, { recursive: true });
   }
 }

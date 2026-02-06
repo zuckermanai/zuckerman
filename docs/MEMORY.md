@@ -338,7 +338,7 @@ Memory Files (MEMORY.md, memory/*.md)
 ## Memory Storage Structure
 
 ```
-{homedirDir}/
+{homedir}/
 ├── MEMORY.md                    ← Long-term semantic memory
 │   └─→ Persistent facts, preferences, important info
 │

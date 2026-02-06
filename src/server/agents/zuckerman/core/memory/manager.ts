@@ -36,12 +36,12 @@ export class UnifiedMemoryManager implements MemoryManager {
   private prospectiveMemory: ProspectiveMemoryStore;
   private emotionalMemory: EmotionalMemoryStore;
 
-  private homedirDir?: string;
+  private homedir?: string;
   private agentId?: string;
   private dbInitialized: boolean = false;
 
-  constructor(homedirDir?: string, agentId?: string) {
-    this.homedirDir = homedirDir;
+  constructor(homedir?: string, agentId?: string) {
+    this.homedir = homedir;
     this.agentId = agentId || "zuckerman";
 
     this.workingMemory = new WorkingMemoryStore();
@@ -56,8 +56,8 @@ export class UnifiedMemoryManager implements MemoryManager {
   /**
    * Create a memory manager instance from homedir directory and agent ID
    */
-  static create(homedirDir: string, agentId?: string): UnifiedMemoryManager {
-    return new UnifiedMemoryManager(homedirDir, agentId);
+  static create(homedir: string, agentId?: string): UnifiedMemoryManager {
+    return new UnifiedMemoryManager(homedir, agentId);
   }
 
   /**
@@ -70,8 +70,8 @@ export class UnifiedMemoryManager implements MemoryManager {
   ): Promise<void> {
     if (this.dbInitialized) return;
 
-    if (!this.homedirDir) {
-      console.warn("[Memory] Cannot initialize database: homedirDir not set");
+    if (!this.homedir) {
+      console.warn("[Memory] Cannot initialize database: homedir not set");
       return;
     }
 
@@ -81,7 +81,7 @@ export class UnifiedMemoryManager implements MemoryManager {
 
       initializeDatabase(
         config,
-        this.homedirDir,
+        this.homedir,
         agentId,
         embeddingCacheTable,
         ftsTable,
@@ -213,7 +213,7 @@ export class UnifiedMemoryManager implements MemoryManager {
 
   /**
    * Get relevant memories for a question/query
-   * Searches across semantic, episodic, and procedural memories to find relevant information
+   * Fetches all memories from specified memory types
    */
   async getRelevantMemories(
     question: string,
@@ -225,53 +225,24 @@ export class UnifiedMemoryManager implements MemoryManager {
     const allMemories: BaseMemory[] = [];
     const types = options?.types ?? ["semantic", "episodic", "procedural"];
     const limit = options?.limit ?? 20;
-    const queryLower = question.toLowerCase();
 
-    // Search semantic memories (facts, knowledge)
+    // Fetch semantic memories (facts, knowledge)
     if (types.includes("semantic")) {
-      const semanticMemories = this.semanticMemory.query({
-        limit: limit * 2, // Get more to filter by relevance
-      });
-
-      // Filter by text match in fact or category
-      const relevantSemantic = semanticMemories.filter((mem) => {
-        const factMatch = mem.fact.toLowerCase().includes(queryLower);
-        const categoryMatch = mem.category?.toLowerCase().includes(queryLower);
-        const queryWords = queryLower.split(/\s+/).filter(w => w.length > 2);
-        const factWords = mem.fact.toLowerCase().split(/\s+/);
-        const wordMatch = queryWords.some(word => factWords.some(fw => fw.includes(word) || word.includes(fw)));
-        return factMatch || categoryMatch || wordMatch;
-      });
-
-      allMemories.push(...relevantSemantic.slice(0, Math.ceil(limit / 3)));
+      const semanticMemories = this.semanticMemory.getAll();
+      console.log(`[UnifiedMemoryManager] Semantic memories:`, semanticMemories);
+      allMemories.push(...semanticMemories);
     }
 
-    // Search episodic memories (events, experiences)
+    // Fetch episodic memories (events, experiences)
     if (types.includes("episodic")) {
-      const episodicMemories = this.episodicMemory.query({
-        query: question,
-        limit: limit * 2,
-      });
-
-      allMemories.push(...episodicMemories.slice(0, Math.ceil(limit / 3)));
+      const episodicMemories = this.episodicMemory.getAll();
+      allMemories.push(...episodicMemories);
     }
 
-    // Search procedural memories (patterns, skills)
+    // Fetch procedural memories (patterns, skills)
     if (types.includes("procedural")) {
-      const proceduralMemories = this.proceduralMemory.findMatching(question);
-      
-      // Also search by pattern and action text
-      const allProcedural = this.proceduralMemory.getAll();
-      const textMatches = allProcedural.filter((mem) => {
-        const patternMatch = mem.pattern.toLowerCase().includes(queryLower);
-        const actionMatch = mem.action.toLowerCase().includes(queryLower);
-        return patternMatch || actionMatch;
-      });
-
-      // Combine and deduplicate
-      const combined = [...proceduralMemories, ...textMatches];
-      const unique = Array.from(new Map(combined.map(m => [m.id, m])).values());
-      allMemories.push(...unique.slice(0, Math.ceil(limit / 3)));
+      const proceduralMemories = this.proceduralMemory.getAll();
+      allMemories.push(...proceduralMemories);
     }
 
     // Sort by recency (newest first)

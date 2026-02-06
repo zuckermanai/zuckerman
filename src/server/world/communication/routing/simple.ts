@@ -9,7 +9,7 @@ export interface RoutedMessage {
   conversationId: string;
   agentId: string;
   conversationKey: string;
-  homedirDir: string;
+  homedir: string;
 }
 
 export class SimpleRouter implements Router {
@@ -85,13 +85,13 @@ export class SimpleRouter implements Router {
     const conversation = conversationManager.getOrCreateMainConversation(route.agentId);
     
     // Resolve homedir directory
-    const homedirDir = resolveAgentHomedir(config, route.agentId);
+    const homedir = resolveAgentHomedir(config, route.agentId);
 
     return {
       conversationId: conversation.id,
       agentId: route.agentId,
       conversationKey: route.conversationKey,
-      homedirDir,
+      homedir,
     };
   }
 }

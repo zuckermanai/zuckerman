@@ -22,9 +22,9 @@ export async function runSleepModeIfNeeded(params: {
   conversationManager: ConversationManager;
   conversationId: string;
   agentId: string;
-  homedirDir: string;
+  homedir: string;
 }): Promise<ConversationEntry | undefined> {
-  const { config, conversationManager, conversationId, agentId, homedirDir } = params;
+  const { config, conversationManager, conversationId, agentId, homedir } = params;
 
   // Resolve sleep settings
   const sleepConfig = resolveSleepConfig({
@@ -82,7 +82,7 @@ export async function runSleepModeIfNeeded(params: {
     const consolidatedMemories = consolidateMemories(importantMessages, summary);
 
     // Phase 4: Save using UnifiedMemoryManager (creates structured memories + file persistence)
-    const memoryManager = UnifiedMemoryManager.create(homedirDir);
+    const memoryManager = UnifiedMemoryManager.create(homedir);
     
     // Save consolidated memories (creates episodic/semantic memories automatically)
     memoryManager.saveConsolidatedMemories(consolidatedMemories, conversationId);
