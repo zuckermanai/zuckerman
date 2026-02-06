@@ -14,19 +14,22 @@ export interface Conversation {
   metadata?: Record<string, unknown>;
 }
 
+export interface ConversationMessage {
+  role: "user" | "assistant" | "system" | "tool";
+  content: string;
+  timestamp: number;
+  toolCallId?: string;
+  toolCalls?: Array<{
+    id: string;
+    name: string;
+    arguments: string;
+  }>;
+  ignore?: boolean;
+}
+
 export interface ConversationState {
   conversation: Conversation;
-  messages: Array<{
-    role: "user" | "assistant" | "system" | "tool";
-    content: string;
-    timestamp: number;
-    toolCallId?: string;
-    toolCalls?: Array<{
-      id: string;
-      name: string;
-      arguments: string;
-    }>;
-  }>;
+  messages: ConversationMessage[];
 }
 
 /**

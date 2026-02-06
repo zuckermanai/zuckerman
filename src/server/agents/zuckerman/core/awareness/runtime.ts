@@ -109,8 +109,6 @@ export class Awareness implements AgentRuntime {
       toolRegistry: this.toolRegistry,
       llmModel,
       streamEmitter: new StreamEventEmitter(stream),
-      conversation: this.conversationManager.getConversation(conversationId) ?? null,
-      messages: [],
       availableTools,
       systemPrompt,
       relevantMemoriesText: "",
@@ -119,29 +117,27 @@ export class Awareness implements AgentRuntime {
     return context;
   }
 
+
   async run(params: AgentRunParams): Promise<AgentRunResult> {
-    // Build awareness context (memory, messages, prompts)
     const context = await this.buildRunContext(params);
+    const llmService = new LLMService(context.llmModel, context.streamEmitter, context.runId);
 
-    // Handle channel metadata if provided (for tool access)
-    if (params.channelMetadata && context.conversation) {
-      await this.conversationManager.updateChannelMetadata(
-        context.conversationId,
-        params.channelMetadata
-      );
+    // Get conversation once - reuse throughout the run
+    let conversation = this.conversationManager.getConversation(context.conversationId);
+
+    // Handle channel metadata
+    if (params.channelMetadata && conversation) {
+      await this.conversationManager.updateChannelMetadata(context.conversationId, params.channelMetadata);
     }
 
-    // Persist user message to conversation (agent owns message persistence)
-    if (context.conversation) {
-      await this.conversationManager.addMessage(
-        context.conversationId,
-        "user",
-        context.message,
-        { runId: context.runId }
-      );
+    // Persist user message
+    if (conversation) {
+      await this.conversationManager.addMessage(context.conversationId, "user", context.message, { runId: context.runId });
+      // Refresh conversation to get updated messages
+      conversation = this.conversationManager.getConversation(context.conversationId);
     }
 
-    // Get relevant memories directly from memory manager
+    // Get relevant memories
     try {
       const memoryResult = await context.memoryManager.getRelevantMemories(context.message, {
         limit: 50,
@@ -150,104 +146,55 @@ export class Awareness implements AgentRuntime {
       context.relevantMemoriesText = formatMemoriesForPrompt(memoryResult);
     } catch (error) {
       console.warn(`[Awareness] Memory retrieval failed:`, error);
-      context.relevantMemoriesText = "";
     }
 
-    // Initialize LLM service
-    const llmService = new LLMService(context.llmModel, context.streamEmitter, context.runId);
+    // Remember memories (async)
+    const conversationContext = conversation?.messages.slice(-3).map(m => m.content).join("\n");
+    context.memoryManager.onNewMessage(context.message, context.conversationId, conversationContext)
+      .catch(err => console.warn(`[Awareness] Failed to remember memories:`, err));
 
-    // Get fresh conversation state (includes the user message we just added)
-    context.conversation = this.conversationManager.getConversation(context.conversationId) ?? null;
-
-    // Build messages from conversation history (includes user message)
-    context.messages = llmService.buildMessages(context);
-
-    // Remember memories from new message (async, don't block)
-    const conversationContext = context.conversation
-      ? context.conversation.messages.slice(-3).map(m => m.content).join("\n")
-      : undefined;
-    
-    context.memoryManager.onNewMessage(
-      context.message,
-      context.conversationId,
-      conversationContext
-    ).catch(err => {
-      console.warn(`[Awareness] Failed to remember memories:`, err);
-    });
-
-    // Record agent run start
-    await activityRecorder.recordAgentRunStart(
-      context.agentId,
-      context.conversationId,
-      context.runId,
-      context.message,
-    );
-
+    await activityRecorder.recordAgentRunStart(context.agentId, context.conversationId, context.runId, context.message);
     await context.streamEmitter.emitLifecycleStart(context.runId);
 
     try {
       const toolService = new ToolService();
       const validationService = new ValidationService(context.llmModel);
 
-      // Unified loop: handles initial call and recursive tool calls
       while (true) {
-        // Call LLM
+        // Call LLM (buildMessages reads from conversation, pruning happens automatically in addMessage)
         const result = await llmService.call({
-          messages: context.messages,
+          messages: llmService.buildMessages(context, conversation),
           temperature: context.temperature,
           availableTools: context.availableTools,
         });
 
-        // If no tool calls, we're about to end - validate first
+        // Handle final response (no tool calls)
         if (!result.toolCalls || result.toolCalls.length === 0) {
-          // Add final assistant response to context messages
-          context.messages.push({
-            role: "assistant",
-            content: result.content,
-          });
-
-          // VALIDATE before ending
           try {
             const validation = await validationService.validate({
               userRequest: context.message,
               systemResult: result.content,
             });
 
-            console.log(`[Awareness] Validation:`, validation);
-
-            // If NOT satisfied, add feedback and continue loop
             if (!validation.satisfied) {
-              const missingText = validation.missing.length > 0
-                ? ` Missing: ${validation.missing.join(', ')}.`
-                : '';
-              const feedback = `Validation: ${validation.reason}.${missingText} Please try again to fully satisfy the user's request.`;
-
-              context.messages.push({
-                role: "system",
-                content: feedback,
-              });
-
-              // Continue loop - LLM will see feedback and try again
+              const missing = validation.missing.length > 0 ? ` Missing: ${validation.missing.join(', ')}.` : '';
+              if (conversation) {
+                await this.conversationManager.addMessage(context.conversationId, "system", 
+                  `Validation: ${validation.reason}.${missing} Instructions: Try different approach to complete the task.`,
+                  { runId: context.runId });
+                conversation = this.conversationManager.getConversation(context.conversationId);
+              }
               continue;
             }
           } catch (error) {
-            // If validation fails, log and proceed (don't block)
-            console.warn(`[Awareness] Validation failed:`, error);
+            console.warn(`[Awareness] Validation error:`, error);
           }
 
-          // If satisfied (or validation failed), proceed with normal end
-          // Persist final response to conversation
-          if (context.conversation) {
-            await this.conversationManager.addMessage(
-              context.conversationId,
-              "assistant",
-              result.content,
-              { runId: context.runId }
-            );
+          if (conversation) {
+            await this.conversationManager.addMessage(context.conversationId, "assistant", result.content, { runId: context.runId });
           }
 
           await context.streamEmitter.emitLifecycleEnd(context.runId, result.tokensUsed?.total);
-
           await activityRecorder.recordAgentRunComplete(
             context.agentId,
             context.conversationId,
@@ -264,8 +211,8 @@ export class Awareness implements AgentRuntime {
           };
         }
 
-        // Handle tool calls: add assistant message, execute tools, add results
-        const assistantMessageWithToolCalls = {
+        // Handle tool calls
+        const assistantMessage = {
           role: "assistant" as const,
           content: "",
           toolCalls: result.toolCalls.map(tc => ({
@@ -274,55 +221,32 @@ export class Awareness implements AgentRuntime {
             arguments: typeof tc.arguments === "string" ? tc.arguments : JSON.stringify(tc.arguments),
           })),
         };
-        context.messages.push(assistantMessageWithToolCalls);
-
-        // Persist assistant message with tool calls
-        if (context.conversation) {
-          await this.conversationManager.addMessage(
-            context.conversationId,
-            "assistant",
-            "",
-            {
-              toolCalls: assistantMessageWithToolCalls.toolCalls,
-              runId: context.runId,
-            }
-          );
+        if (conversation) {
+          await this.conversationManager.addMessage(context.conversationId, "assistant", "", {
+            toolCalls: assistantMessage.toolCalls,
+            runId: context.runId,
+          });
+          conversation = this.conversationManager.getConversation(context.conversationId);
         }
 
-        const toolCallResults = await toolService.executeTools(context, result.toolCalls);
-
-        // Add tool results to context and persist them
-        for (const toolResult of toolCallResults) {
-          context.messages.push(toolResult);
-
-          // Persist tool result
-          if (context.conversation) {
-            await this.conversationManager.addMessage(
-              context.conversationId,
-              "tool",
-              toolResult.content,
-              {
-                toolCallId: toolResult.toolCallId,
-                runId: context.runId,
-              }
-            );
+        const toolResults = await toolService.executeTools(context, result.toolCalls);
+        for (const toolResult of toolResults) {
+          if (conversation) {
+            await this.conversationManager.addMessage(context.conversationId, "tool", toolResult.content, {
+              toolCallId: toolResult.toolCallId,
+              runId: context.runId,
+            });
           }
         }
-
-        // Loop continues to call LLM again with tool results
+        // Refresh conversation after adding tool results
+        if (conversation) {
+          conversation = this.conversationManager.getConversation(context.conversationId);
+        }
       }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : String(err);
-
       await context.streamEmitter.emitLifecycleError(context.runId, errorMessage);
-
-      await activityRecorder.recordAgentRunError(
-        context.agentId,
-        context.conversationId,
-        context.runId,
-        errorMessage,
-      );
-      
+      await activityRecorder.recordAgentRunError(context.agentId, context.conversationId, context.runId, errorMessage);
       console.error(`[ZuckermanRuntime] Error in run:`, err);
       throw err;
     }

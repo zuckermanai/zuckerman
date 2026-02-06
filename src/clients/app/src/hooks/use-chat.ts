@@ -65,6 +65,9 @@ export function useChat(
   const lastMessageCountRef = useRef<number>(0);
   const currentConversationIdRef = useRef<string | null>(currentConversationId);
   const streamingMessageRef = useRef<{ runId: string; content: string } | null>(null);
+  // Track pending tool calls: maps toolCallId -> tool name
+  // Used to match tool results with their corresponding tool calls
+  const pendingToolCallsRef = useRef<Map<string, string>>(new Map());
 
   // Update refs when conversationId changes - do this synchronously
   useEffect(() => {
@@ -74,6 +77,7 @@ export function useChat(
     // If conversation changed, clear streaming state and messages
     if (previousConversationId !== currentConversationId) {
       streamingMessageRef.current = null;
+      pendingToolCallsRef.current.clear();
       // Clear messages immediately when switching conversations
       setMessages([]);
     }
@@ -359,6 +363,7 @@ export function useChat(
         } else if (payload.phase === "end") {
           // Run completed - finalize streaming message
           streamingMessageRef.current = null;
+          pendingToolCallsRef.current.clear();
         } else if (payload.phase === "error") {
           // Run error - show error message
           streamingMessageRef.current = null;
@@ -424,38 +429,107 @@ export function useChat(
           return newMessages;
         });
       } else if (eventType === "tool.call" && payload.tool) {
+        const toolName = payload.tool; // Type guard: payload.tool is now string
         setMessages((prev) => {
           const newMessages = [...prev];
+          
+          // Remove thinking indicator if present
           const thinkingIndex = newMessages.findIndex((msg) => msg.role === "thinking");
           if (thinkingIndex !== -1) {
             newMessages.splice(thinkingIndex, 1);
           }
-          newMessages.push({
+          
+          // Generate unique tool call ID
+          const toolCallId = `stream-tool-${Date.now()}-${Math.random().toString(36).substring(7)}`;
+          const toolArgsStr = payload.toolArgs ? JSON.stringify(payload.toolArgs) : "{}";
+          
+          // Create assistant message with tool call
+          const toolCallMessage: Message = {
             role: "assistant",
-            content: `🔧 Calling tool: ${payload.tool}${payload.toolArgs ? ` with args: ${JSON.stringify(payload.toolArgs)}` : ""}`,
+            content: "",
             timestamp: Date.now(),
-          });
+            toolCalls: [{
+              id: toolCallId,
+              name: toolName,
+              arguments: toolArgsStr,
+            }],
+          };
+          
+          newMessages.push(toolCallMessage);
+          
+          // Track this tool call for matching with its result
+          pendingToolCallsRef.current.set(toolCallId, toolName);
+          
           return newMessages;
         });
       } else if (eventType === "tool.result" && payload.tool) {
+        const toolName = payload.tool; // Type guard: payload.tool is now string
         setMessages((prev) => {
           const newMessages = [...prev];
+          
+          // Format tool result content
+          const formatToolResult = (result: unknown): string => {
+            if (result === null || result === undefined) return "completed";
+            if (typeof result === "string") return result;
+            if (typeof result === "object") {
+              try {
+                return JSON.stringify(result);
+              } catch {
+                return String(result);
+              }
+            }
+            return String(result);
+          };
+          
+          const resultContent = formatToolResult(payload.toolResult);
+          
+          // Find the most recent tool call message for this tool name (search backwards)
+          let toolCallId: string | undefined;
+          let toolCallIndex = -1;
+          
           for (let i = newMessages.length - 1; i >= 0; i--) {
-            if (newMessages[i].content.includes(`Calling tool: ${payload.tool}`)) {
-              const resultStr = payload.toolResult
-                ? JSON.stringify(payload.toolResult).substring(0, 200)
-                : "completed";
-              newMessages[i] = {
-                ...newMessages[i],
-                content: `🔧 Tool ${payload.tool} result: ${resultStr}`,
-              };
-              break;
+            const msg = newMessages[i];
+            if (msg.role === "assistant" && msg.toolCalls) {
+              for (const toolCall of msg.toolCalls) {
+                if (toolCall.name === toolName && pendingToolCallsRef.current.has(toolCall.id)) {
+                  toolCallId = toolCall.id;
+                  toolCallIndex = i;
+                  break;
+                }
+              }
+              if (toolCallId) break;
             }
           }
+          
+          if (toolCallId !== undefined && toolCallIndex !== -1) {
+            // Create tool result message
+            const toolResultMessage: Message = {
+              role: "tool",
+              content: resultContent,
+              timestamp: Date.now(),
+              toolCallId: toolCallId, // TypeScript now knows this is string
+            };
+            
+            // Insert result message right after the tool call message
+            newMessages.splice(toolCallIndex + 1, 0, toolResultMessage);
+            
+            // Remove from pending calls
+            pendingToolCallsRef.current.delete(toolCallId);
+          } else {
+            // No matching tool call found, append as fallback
+            newMessages.push({
+              role: "tool",
+              content: resultContent,
+              timestamp: Date.now(),
+              toolCallId: `fallback-${Date.now()}`,
+            });
+          }
+          
           return newMessages;
         });
       } else if (eventType === "done") {
         streamingMessageRef.current = null;
+        pendingToolCallsRef.current.clear();
         loadMessages();
       }
     };

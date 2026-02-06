@@ -234,13 +234,49 @@ export function ChatView({ state, onAction }: ChatViewProps) {
                 if (msg.role === "thinking") {
                   return <ThinkingIndicator key={`thinking-${idx}`} agentId={state.currentAgentId} />;
                 }
+                
+                // Check if this is a tool result message (should be hidden)
+                const isSystemToolResult = msg.role === "system" && 
+                  msg.content.trim().startsWith("{") && 
+                  msg.content.trim().endsWith("}");
+                if (msg.role === "tool" || isSystemToolResult) {
+                  return null;
+                }
+                
+                // Collect tool results that belong to this assistant message
+                const toolResults: Array<{ toolCallId: string; content: string }> = [];
+                if (msg.role === "assistant" && msg.toolCalls) {
+                  // Look ahead for tool result messages
+                  for (let i = idx + 1; i < messages.length; i++) {
+                    const nextMsg = messages[i];
+                    const isNextSystemToolResult = nextMsg.role === "system" && 
+                      nextMsg.content.trim().startsWith("{") && 
+                      nextMsg.content.trim().endsWith("}");
+                    
+                    // Stop if we hit another assistant or user message
+                    if (nextMsg.role === "assistant" || nextMsg.role === "user" || nextMsg.role === "thinking") {
+                      break;
+                    }
+                    
+                    // Collect tool results
+                    if (nextMsg.role === "tool" || isNextSystemToolResult) {
+                      if (nextMsg.toolCallId) {
+                        toolResults.push({
+                          toolCallId: nextMsg.toolCallId,
+                          content: nextMsg.content,
+                        });
+                      }
+                    }
+                  }
+                }
+                
                 return (
                   <MessageItem
                     key={`${msg.role}-${idx}-${msg.timestamp}`}
                     message={msg}
                     agentId={state.currentAgentId}
                     isSending={isSending}
-                    gatewayClient={gatewayClient}
+                    toolResults={toolResults}
                   />
                 );
               })}

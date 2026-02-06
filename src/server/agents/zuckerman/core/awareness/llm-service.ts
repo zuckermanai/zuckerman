@@ -2,6 +2,7 @@ import type { LLMMessage, LLMTool } from "@server/world/providers/llm/types.js";
 import { LLMModel } from "@server/world/providers/llm/index.js";
 import type { StreamEventEmitter } from "@server/world/communication/stream-emitter.js";
 import type { RunContext } from "./context.js";
+import type { ConversationState } from "@server/agents/zuckerman/conversations/types.js";
 
 export type ToolCall = {
   id: string;
@@ -23,18 +24,20 @@ export class LLMService {
   ) {}
 
   /**
-   * Build messages array for LLM call from context
+   * Build messages array for LLM call from conversation
+   * Prepends system prompt and memories to conversation messages
    */
-  buildMessages(context: RunContext): LLMMessage[] {
+  buildMessages(context: RunContext, conversation: ConversationState | null | undefined): LLMMessage[] {
     const messages: LLMMessage[] = [
       { role: "system", content: context.systemPrompt },
     ];
 
-    // Add conversation history
-    if (context.conversation) {
-      for (const msg of context.conversation.messages) {
+    // Add messages from conversation
+    if (conversation) {
+      for (const msg of conversation.messages) {
+        if (msg.ignore) continue;
         messages.push({
-          role: msg.role === "user" ? "user" : "assistant",
+          role: msg.role,
           content: msg.content,
           toolCalls: msg.toolCalls,
           toolCallId: msg.toolCallId,
@@ -50,10 +53,14 @@ export class LLMService {
       });
     }
 
-    // Filter out empty messages
+    // Filter out empty messages, but keep assistant messages with tool_calls (they can have empty content)
     return messages.filter(msg => {
+      // Keep assistant messages with tool_calls even if content is empty
+      if (msg.role === "assistant" && msg.toolCalls && msg.toolCalls.length > 0) {
+        return true;
+      }
+      // Filter out other empty messages
       if (!msg.content || msg.content.trim().length === 0) {
-        console.log(`[LLMService] Empty message:`, msg);
         return false;
       }
       return true;

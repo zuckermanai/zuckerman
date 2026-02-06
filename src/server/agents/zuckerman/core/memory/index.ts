@@ -18,6 +18,9 @@ export * from "./manager.js"; // Unified Memory Manager
 // Memory Remembering (Real-time)
 export * from "./memory-classifier.js";
 
+// Memory Conversation Optimizer
+export * from "./memory-conversation-optimizer.js";
+
 // Services: Encoding, Storage, Retrieval
 export * from "./retrieval/encoding/schema.js"; // Database schema
 export * from "./retrieval/encoding/chunking.js"; // Text chunking
@@ -35,3 +38,4 @@ export type { ResolvedMemorySearchConfig, MemorySearchConfig } from "./config.js
 // Function exports (matching OpenClaw pattern)
 export { getMemorySearchManager } from "./retrieval/search.js";
 export { UnifiedMemoryManager } from "./manager.js";
+export { pruneUnusedMessages } from "./memory-conversation-optimizer.js";

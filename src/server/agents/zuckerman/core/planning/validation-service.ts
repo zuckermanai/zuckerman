@@ -9,9 +9,6 @@ export interface ValidationResult {
 export class ValidationService {
   constructor(private judgeModel: LLMModel) {}
 
-  /**
-   * Validate if system result satisfies user request
-   */
   async validate(params: {
     userRequest: string;
     systemResult: string;
@@ -22,7 +19,7 @@ System did: ${params.systemResult}
 
 Does the system result satisfy what the user asked for?
 
-Respond in JSON format:
+Respond in JSON:
 {
   "satisfied": true/false,
   "reason": "brief explanation",
@@ -34,61 +31,37 @@ Respond in JSON format:
         messages: [{ role: "user", content: prompt }],
         temperature: 0.3,
       });
-
       return this.parseResponse(response.content);
     } catch (error) {
-      console.warn(`[ValidationService] Validation call failed:`, error);
-      // Return not satisfied on error to be safe
-      return {
-        satisfied: false,
-        reason: "Validation failed",
-        missing: [],
-      };
+      console.warn(`[ValidationService] Validation failed:`, error);
+      return { satisfied: false, reason: "Validation failed", missing: [] };
     }
   }
 
-  /**
-   * Parse LLM response into ValidationResult
-   */
   private parseResponse(content: string): ValidationResult {
     try {
-      // Try to extract JSON from response (might have markdown code blocks)
+      // Extract JSON (handle markdown code blocks)
       let jsonStr = content.trim();
+      const codeBlockMatch = jsonStr.match(/```(?:json)?\s*(\{[\s\S]*\})\s*```/);
+      if (codeBlockMatch) jsonStr = codeBlockMatch[1];
       
-      // Remove markdown code blocks if present
-      const jsonMatch = jsonStr.match(/```(?:json)?\s*(\{[\s\S]*\})\s*```/);
-      if (jsonMatch) {
-        jsonStr = jsonMatch[1];
-      }
-      
-      // Try to find JSON object in the response
-      const jsonObjectMatch = jsonStr.match(/\{[\s\S]*\}/);
-      if (jsonObjectMatch) {
-        jsonStr = jsonObjectMatch[0];
-      }
+      const jsonMatch = jsonStr.match(/\{[\s\S]*\}/);
+      if (jsonMatch) jsonStr = jsonMatch[0];
 
       const parsed = JSON.parse(jsonStr);
-      
       return {
         satisfied: Boolean(parsed.satisfied),
         reason: String(parsed.reason || "No reason provided"),
         missing: Array.isArray(parsed.missing) ? parsed.missing.map(String) : [],
       };
     } catch (error) {
-      console.warn(`[ValidationService] Failed to parse validation response:`, error);
-      console.warn(`[ValidationService] Response content:`, content);
-      
-      // Fallback: try to infer from text
-      const lowerContent = content.toLowerCase();
-      const isSatisfied = lowerContent.includes('"satisfied": true') || 
-                         lowerContent.includes("satisfied: true") ||
-                         (lowerContent.includes("yes") && !lowerContent.includes("not"));
-      
-      return {
-        satisfied: isSatisfied,
-        reason: "Could not parse validation response",
-        missing: [],
-      };
+      console.warn(`[ValidationService] Parse failed:`, error);
+      // Fallback: infer from text
+      const lower = content.toLowerCase();
+      const satisfied = lower.includes('"satisfied": true') || 
+                       lower.includes("satisfied: true") ||
+                       (lower.includes("yes") && !lower.includes("not"));
+      return { satisfied, reason: "Could not parse response", missing: [] };
     }
   }
 }
