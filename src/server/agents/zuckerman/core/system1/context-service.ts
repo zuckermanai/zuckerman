@@ -3,7 +3,7 @@ import { LLMService } from "@server/world/providers/llm/llm-service.js";
 import { ToolService } from "../../tools/index.js";
 import { ConversationManager } from "@server/agents/zuckerman/conversations/index.js";
 
-export interface ContextBuilderResult {
+export interface ContextServiceResult {
   enrichedContext: string;
   gatheredInformation: string[];
   iterations: number;
@@ -12,10 +12,10 @@ export interface ContextBuilderResult {
 const MAX_ITERATIONS = 10;
 
 /**
- * Context Builder - Proactively gathers missing information needed to fulfill a request
+ * Context Service - Proactively gathers missing information needed to fulfill a request
  * Works like System1's while loop but focused on information gathering
  */
-export class ContextBuilder {
+export class ContextService {
   constructor(
     private conversationManager: ConversationManager,
     private context: RunContext
@@ -24,7 +24,7 @@ export class ContextBuilder {
   /**
    * Build context by iteratively gathering missing information
    */
-  async buildContext(userRequest: string): Promise<ContextBuilderResult> {
+  async buildContext(userRequest: string): Promise<ContextServiceResult> {
     const llmService = new LLMService(
       this.context.llmModel,
       this.context.streamEmitter,
