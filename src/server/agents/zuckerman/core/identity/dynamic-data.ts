@@ -57,10 +57,19 @@ export async function buildDynamicData(agentDir: string): Promise<string> {
 
   parts.push("# Dynamic System Data\n");
 
-  // Agent Directory (Code Location)
-  parts.push("## Agent Directory (Code Location)");
-  parts.push(`Your agent code is located at: \`${agentDir}\``);
-  parts.push(`Project root: \`${projectRoot}\``);
+  // Directory Information
+  parts.push("## Available Directories");
+  parts.push(`You have access to two key directories:`);
+  parts.push("");
+  parts.push(`1. **Agent Directory**: \`${agentDir}\``);
+  parts.push(`   - Your own code, configuration, tools, and identity files`);
+  parts.push(`   - This is where you can modify yourself (self-improvement)`);
+  parts.push(`   - Contains: core modules, tools, conversations, identity`);
+  parts.push("");
+  parts.push(`2. **Project Root**: \`${projectRoot}\``);
+  parts.push(`   - The entire Zuckerman project codebase`);
+  parts.push(`   - Includes: World layer, all agents, interfaces, documentation`);
+  parts.push(`   - Use this to understand the full system architecture and find shared utilities`);
   parts.push("");
 
   // System Information
