@@ -1,11 +1,14 @@
-import type { RunContext } from "@server/world/providers/llm/context.js";
-import { LLMService } from "@server/world/providers/llm/llm-service.js";
-import type { LLMMessage } from "@server/world/providers/llm/types.js";
-import { ToolService } from "../../tools/index.js";
+import { generateText } from "ai";
+import type { ConversationMessage } from "@server/agents/zuckerman/conversations/types.js";
 import { ConversationManager } from "@server/agents/zuckerman/conversations/index.js";
 import type { BrainPart, BrainGoal } from "./types.js";
 import { WorkingMemoryManager } from "./working-memory.js";
 import { System2DebugLogger } from "./debug.js";
+import { activityRecorder } from "@server/agents/zuckerman/activity/index.js";
+import type { Tool } from "ai";
+import type { LanguageModel } from "ai";
+import type { StreamEventEmitter } from "@server/world/communication/stream-emitter.js";
+import { convertToModelMessages } from "@server/world/providers/llm/helpers.js";
 
 export interface BrainModuleResult {
   completed: boolean;
@@ -16,7 +19,12 @@ export interface BrainModuleResult {
 export class BrainModule {
   constructor(
     private conversationManager: ConversationManager,
-    private context: RunContext,
+    private conversationId: string,
+    private runId: string,
+    private llmModel: LanguageModel,
+    private streamEmitter: StreamEventEmitter,
+    private temperature: number | undefined,
+    private availableTools: Record<string, Tool>,
     private brainPart: BrainPart,
     private goal: BrainGoal,
     private workingMemoryManager: WorkingMemoryManager,
@@ -25,9 +33,6 @@ export class BrainModule {
   ) {}
 
   async run(): Promise<BrainModuleResult> {
-    const llmService = new LLMService(this.context.llmModel, this.context.streamEmitter, this.context.runId);
-    const toolService = new ToolService();
-    
     let toolCallsMade = 0;
     const maxIterations = this.brainPart.maxIterations ?? 50;
     let iterations = 0;
@@ -37,18 +42,18 @@ export class BrainModule {
     // Add initial goal message to conversation
     const goalMessage = `[Brain Part: ${this.brainPart.name}] Goal: ${this.goal.description}`;
     await this.conversationManager.addMessage(
-      this.context.conversationId,
+      this.conversationId,
       "system",
       goalMessage,
-      { runId: this.context.runId }
+      { runId: this.runId }
     );
-    await this.debugLogger.logConversationMessage("system", goalMessage, { runId: this.context.runId });
+    await this.debugLogger.logConversationMessage("system", goalMessage, { runId: this.runId });
 
     while (iterations < maxIterations) {
       iterations++;
       console.log(`[BrainModule] ${this.brainPart.name} iteration ${iterations}/${maxIterations}`);
       
-      const conversation = this.conversationManager.getConversation(this.context.conversationId);
+      const conversation = this.conversationManager.getConversation(this.conversationId);
       
       // Get current working memory
       const workingMemory = this.workingMemoryManager.getState();
@@ -66,8 +71,8 @@ export class BrainModule {
       
       // Build messages: use brain part prompt as system prompt, then add conversation messages
       // Don't use buildMessages() as it includes systemPrompt and relevantMemoriesText which conflict with brain part prompt
-      const messages: LLMMessage[] = [
-        { role: "system", content: brainPartPrompt },
+      const messages: ConversationMessage[] = [
+        { role: "system", content: brainPartPrompt, timestamp: Date.now() },
       ];
       
       // Add conversation messages (excluding system messages to avoid duplication)
@@ -77,93 +82,87 @@ export class BrainModule {
           messages.push({
             role: msg.role as "user" | "assistant" | "tool",
             content: msg.content,
+            timestamp: msg.timestamp,
             toolCalls: msg.toolCalls,
             toolCallId: msg.toolCallId,
           });
         }
       }
 
+      // Ensure conversation ends with a user message (Anthropic requirement)
+      // Check the last non-system message - if it's assistant (and not followed by tool), add user message
+      const nonSystemMessages = messages.filter(m => m.role !== "system");
+      if (nonSystemMessages.length > 0) {
+        const lastMessage = nonSystemMessages[nonSystemMessages.length - 1];
+        // If last message is assistant (not tool), we need a user message to continue
+        // Tool messages are fine as they're followed by assistant responses
+        if (lastMessage.role === "assistant") {
+          // Add a continuation user message to ensure conversation ends with user message
+          messages.push({
+            role: "user",
+            content: "Please continue working on the goal.",
+            timestamp: Date.now(),
+          });
+        }
+      }
+
       const toolsAllowed = this.brainPart.toolsAllowed !== false; // Default to true if not specified
-      const availableTools = toolsAllowed ? this.context.availableTools : [];
-      const result = await llmService.call({
-        messages,
-        temperature: this.context.temperature,
-        availableTools,
+      const availableTools = toolsAllowed ? this.availableTools : {};
+      
+      const result = await generateText({
+        model: this.llmModel,
+        messages: convertToModelMessages(messages),
+        temperature: this.temperature,
+        tools: availableTools,
       });
+
+      // Handle tool calls for logging
+      const toolCalls = await result.toolCalls;
+      if (toolCalls && toolCalls.length > 0) {
+        toolCallsMade += toolCalls.length;
+        console.log(`[BrainModule] ${this.brainPart.name} making ${toolCalls.length} tool call(s): ${toolCalls.map(tc => tc.toolName).join(", ")}`);
+        const toolCallsForLog = toolCalls.map(tc => ({
+          id: tc.toolCallId,
+          name: tc.toolName,
+          arguments: typeof tc.input === "string" ? tc.input : JSON.stringify(tc.input),
+        }));
+        await this.conversationManager.addMessage(
+          this.conversationId,
+          "assistant",
+          result.text || "",
+          { toolCalls: toolCallsForLog, runId: this.runId }
+        );
+        await this.debugLogger.logConversationMessage("assistant", result.text || "", { toolCalls: toolCallsForLog, runId: this.runId });
+      }
 
       await this.debugLogger.logLLMCall(
         `brain_part_${this.brainPart.id}_iteration_${iterations}`,
         messages,
-        result,
-        this.context.temperature,
-        availableTools
+        { content: result.text  },
+        this.temperature,
+        Object.keys(availableTools)
       );
 
-      // Check if goal is complete (no tool calls means brain part thinks it's done)
-      if (!result.toolCalls?.length) {
-        // Brain part indicates completion
-        const completionMessage = result.content || `Goal "${this.goal.description}" completed by ${this.brainPart.name}`;
-        
-        console.log(`[BrainModule] ${this.brainPart.name} completed successfully after ${iterations} iterations`);
-        
-        await this.conversationManager.addMessage(
-          this.context.conversationId,
-          "assistant",
-          completionMessage,
-          { runId: this.context.runId }
-        );
-        await this.debugLogger.logConversationMessage("assistant", completionMessage, { runId: this.context.runId });
-
-        return {
-          completed: true,
-          result: completionMessage,
-          toolCallsMade,
-        };
-      }
-
-      // Handle tool calls
-      toolCallsMade += result.toolCalls.length;
-      console.log(`[BrainModule] ${this.brainPart.name} making ${result.toolCalls.length} tool call(s): ${result.toolCalls.map(tc => tc.name).join(", ")}`);
+      // AI SDK handles tool execution automatically
+      // The result.text is the final response after all tool executions
+      // Brain part indicates completion
+      const completionMessage = result.text || `Goal "${this.goal.description}" completed by ${this.brainPart.name}`;
       
-      const toolCalls = result.toolCalls.map(tc => ({
-        id: tc.id,
-        name: tc.name,
-        arguments: typeof tc.arguments === "string" ? tc.arguments : JSON.stringify(tc.arguments),
-      }));
+      console.log(`[BrainModule] ${this.brainPart.name} completed successfully after ${iterations} iterations`);
       
-      const assistantMessage = result.content || "";
       await this.conversationManager.addMessage(
-        this.context.conversationId,
+        this.conversationId,
         "assistant",
-        assistantMessage,
-        { toolCalls, runId: this.context.runId }
+        completionMessage,
+        { runId: this.runId }
       );
-      await this.debugLogger.logConversationMessage("assistant", assistantMessage, { toolCalls, runId: this.context.runId });
+      await this.debugLogger.logConversationMessage("assistant", completionMessage, { runId: this.runId });
 
-      const toolResults = await toolService.executeTools(this.context, result.toolCalls);
-      for (const toolResult of toolResults) {
-        await this.conversationManager.addMessage(
-          this.context.conversationId,
-          "tool",
-          toolResult.content,
-          { toolCallId: toolResult.toolCallId, runId: this.context.runId }
-        );
-        await this.debugLogger.logConversationMessage("tool", toolResult.content, { toolCallId: toolResult.toolCallId, runId: this.context.runId });
-        
-        // Find the corresponding tool call for logging
-        const toolCall = result.toolCalls.find(tc => tc.id === toolResult.toolCallId);
-        if (toolCall) {
-          await this.debugLogger.logToolCall(
-            {
-              id: toolCall.id,
-              name: toolCall.name,
-              arguments: typeof toolCall.arguments === "string" ? toolCall.arguments : JSON.stringify(toolCall.arguments),
-            },
-            toolResult,
-            `brain_part_${this.brainPart.id}_iteration_${iterations}`
-          );
-        }
-      }
+      return {
+        completed: true,
+        result: completionMessage,
+        toolCallsMade,
+      };
     }
 
     // Max iterations reached

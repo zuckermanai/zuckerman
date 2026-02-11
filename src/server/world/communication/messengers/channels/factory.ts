@@ -8,7 +8,7 @@ import type { ZuckermanConfig } from "@server/world/config/types.js";
 import type { SimpleRouter } from "@server/world/communication/routing/index.js";
 import type { AgentRuntimeFactory } from "@server/world/runtime/agents/index.js";
 import type { Channel } from "./types.js";
-import { setChannelRegistry } from "@server/agents/zuckerman/tools/channels/registry.js";
+import { setChannelRegistry } from "@server/agents/zuckerman/tools/channels/index.js";
 import { formatMessageWithChannelSource } from "./envelope.js";
 import { loadConfig } from "@server/world/config/index.js";
 import { resolveSecurityContext } from "@server/world/execution/security/context/index.js";

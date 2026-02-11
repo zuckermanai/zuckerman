@@ -7,7 +7,7 @@ import { deriveConversationKey } from "../conversations/manager.js";
 import { loadConversationStore } from "../conversations/store.js";
 import type { ConversationEntry } from "../conversations/types.js";
 import type { ZuckermanConfig } from "@server/world/config/types.js";
-import { LLMManager } from "@server/world/providers/llm/index.js";
+import { LLMProvider } from "@server/world/providers/llm/index.js";
 import { resolveSleepConfig } from "./config.js";
 import { shouldSleep } from "./trigger.js";
 import { processConversation } from "./processor.js";
@@ -37,8 +37,8 @@ export async function runSleepModeIfNeeded(params: {
   }
 
   // Get large context model for sleep processing (available for future LLM-based processing)
-  const llmManager = LLMManager.getInstance();
-  const model = await llmManager.largeContext(config);
+  const llmManager = LLMProvider.getInstance(config);
+  const model = await llmManager.largeContext();
 
   // Get conversation entry to check token counts
   const conversation = conversationManager.getConversation(conversationId);

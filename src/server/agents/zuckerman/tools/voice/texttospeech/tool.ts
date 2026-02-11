@@ -1,99 +1,65 @@
-import type { Tool } from "../../terminal/index.js";
-import type { SecurityContext } from "@server/world/execution/security/types.js";
-import { isToolAllowed } from "@server/world/execution/security/policy/tool-policy.js";
+import { tool, zodSchema } from "@ai-sdk/provider-utils";
+import { z } from "zod";
 import { convertTextToSpeech } from "./index.js";
 import { loadConfig } from "@server/world/config/index.js";
 
-export function createTextToSpeechTool(): Tool {
-  return {
-    definition: {
-      name: "text_to_speech",
-      description: "Convert text to speech and return a MEDIA: path. Use when the user requests audio or TTS is enabled. Copy the MEDIA line exactly.",
-      parameters: {
-        type: "object",
-        properties: {
-          text: {
-            type: "string",
-            description: "Text to convert to speech",
-          },
-          provider: {
-            type: "string",
-            description: "TTS provider: openai, elevenlabs, or edge (optional, uses config default)",
-            enum: ["openai", "elevenlabs", "edge"],
-          },
-          channel: {
-            type: "string",
-            description: "Optional channel id to pick output format (e.g. telegram for voice-compatible format)",
-          },
-        },
-        required: ["text"],
-      },
-    },
-    handler: async (params, securityContext) => {
-      try {
-        const { text, provider, channel } = params;
+const textToSpeechToolInputSchema = z.object({
+  text: z.string().describe("Text to convert to speech"),
+  provider: z.enum(["openai", "elevenlabs", "edge"]).optional().describe("TTS provider: openai, elevenlabs, or edge (optional, uses config default)"),
+  channel: z.string().optional().describe("Optional channel id to pick output format (e.g. telegram for voice-compatible format)"),
+});
 
-        if (typeof text !== "string" || text.trim().length === 0) {
-          return {
-            success: false,
-            error: "text is required and must be non-empty",
-          };
-        }
+type TextToSpeechToolInput = z.infer<typeof textToSpeechToolInputSchema>;
 
-        // Check tool security
-        if (securityContext) {
-          const toolAllowed = isToolAllowed("text_to_speech", securityContext.toolPolicy);
-          if (!toolAllowed) {
-            return {
-              success: false,
-              error: "Text-to-speech tool is not allowed by security policy",
-            };
-          }
-        }
+export const textToSpeechTool = tool<TextToSpeechToolInput, string>({
+  description: "Convert text to speech and return a MEDIA: path. Use when the user requests audio or TTS is enabled. Copy the MEDIA line exactly.",
+  inputSchema: zodSchema(textToSpeechToolInputSchema),
+  execute: async (params) => {
+    try {
+      const { text, provider, channel } = params;
 
-        // Load config for TTS settings
-        const config = await loadConfig();
+      // Load config for TTS settings
+      const config = await loadConfig();
 
-        // Convert text to speech
-        const result = await convertTextToSpeech({
-          text,
-          provider: provider as "openai" | "elevenlabs" | "edge" | undefined,
-          config: config.textToSpeech,
-          channel: typeof channel === "string" ? channel : undefined,
-        });
+      // Convert text to speech
+      const result = await convertTextToSpeech({
+        text,
+        provider: provider,
+        config: config.textToSpeech,
+        channel: channel,
+      });
 
-        if (!result.success || !result.audioPath) {
-          return {
-            success: false,
-            error: result.error || "TTS conversion failed",
-          };
-        }
-
-        // Build response lines
-        const lines: string[] = [];
-        
-        // Tag Telegram Opus output as a voice bubble instead of a file attachment
-        if (result.voiceCompatible) {
-          lines.push("[[audio_as_voice]]");
-        }
-        
-        lines.push(`MEDIA:${result.audioPath}`);
-
-        return {
-          success: true,
-          result: {
-            content: lines.join("\n"),
-            audioPath: result.audioPath,
-            provider: result.provider,
-            latencyMs: result.latencyMs,
-          },
-        };
-      } catch (err) {
-        return {
+      if (!result.success || !result.audioPath) {
+        return JSON.stringify({
           success: false,
-          error: err instanceof Error ? err.message : "Unknown error",
-        };
+          error: result.error || "TTS conversion failed",
+        });
       }
-    },
-  };
-}
+
+      // Build response lines
+      const lines: string[] = [];
+      
+      // Tag Telegram Opus output as a voice bubble instead of a file attachment
+      if (result.voiceCompatible) {
+        lines.push("[[audio_as_voice]]");
+      }
+      
+      lines.push(`MEDIA:${result.audioPath}`);
+
+      return JSON.stringify({
+        success: true,
+        result: {
+          content: lines.join("\n"),
+          audioPath: result.audioPath,
+          provider: result.provider,
+          latencyMs: result.latencyMs,
+        },
+      });
+    } catch (err) {
+      return JSON.stringify({
+        success: false,
+        error: err instanceof Error ? err.message : "Unknown error",
+      });
+    }
+  },
+});

@@ -1,7 +1,11 @@
-import type { RunContext } from "@server/world/providers/llm/context.js";
-import { LLMService } from "@server/world/providers/llm/llm-service.js";
-import { ToolService } from "../../tools/index.js";
+import { generateText } from "ai";
 import { ConversationManager } from "@server/agents/zuckerman/conversations/index.js";
+import type { Tool } from "ai";
+import type { LanguageModel } from "ai";
+import type { StreamEventEmitter } from "@server/world/communication/stream-emitter.js";
+import { ToolRegistry } from "@server/agents/zuckerman/tools/registry.js";
+import { convertToModelMessages } from "@server/world/providers/llm/helpers.js";
+import type { ConversationMessage } from "@server/agents/zuckerman/conversations/types.js";
 
 export interface ContextServiceResult {
   enrichedContext: string;
@@ -18,27 +22,20 @@ const MAX_ITERATIONS = 10;
 export class ContextService {
   constructor(
     private conversationManager: ConversationManager,
-    private context: RunContext
+    private llmModel: LanguageModel,
+    private streamEmitter: StreamEventEmitter,
+    private runId: string,
+    private availableTools: Record<string, Tool>,
+    private toolRegistry: ToolRegistry
   ) {}
 
   /**
    * Build context by iteratively gathering missing information
    */
   async buildContext(userRequest: string): Promise<ContextServiceResult> {
-    const llmService = new LLMService(
-      this.context.llmModel,
-      this.context.streamEmitter,
-      this.context.runId
-    );
-    const toolService = new ToolService();
-
     const gatheredInformation: string[] = [];
-    const messages: Array<{
-      role: "user" | "assistant" | "system" | "tool";
-      content: string;
-      toolCalls?: Array<{ id: string; name: string; arguments: string }>;
-      toolCallId?: string;
-    }> = [
+
+    const messages: ConversationMessage[] = [
       {
         role: "system",
         content: `Gather missing information needed to fulfill: "${userRequest}"
@@ -47,85 +44,58 @@ IMPORTANT CONTEXT: You are operating completely independently. There is no one e
 
 Use available tools to find answers. Never ask the user - always use tools to discover information yourself.
 When you have enough context, summarize what you've gathered.`,
+        timestamp: Date.now(),
       },
       {
         role: "user",
         content: `User request: "${userRequest}"
 
 What information is needed? Start gathering it using tools.`,
+        timestamp: Date.now(),
       },
     ];
 
     let iterations = 0;
     while (iterations < MAX_ITERATIONS) {
       iterations++;
-      const result = await llmService.call({
-        messages,
+      const result = await generateText({
+        model: this.llmModel,
+        messages: convertToModelMessages(messages),
         temperature: 0.3,
-        availableTools: this.context.availableTools,
+        tools: this.availableTools,
       });
 
-      if (result.toolCalls?.length) {
-        messages.push({
-          role: "assistant",
-          content: result.content || "",
-          toolCalls: result.toolCalls.map(tc => ({
-            id: tc.id,
-            name: tc.name,
-            arguments: typeof tc.arguments === "string" ? tc.arguments : JSON.stringify(tc.arguments),
-          })),
-        });
-
-        const toolResults = await toolService.executeTools(this.context, result.toolCalls);
-        for (const toolResult of toolResults) {
-          messages.push({
-            role: "tool",
-            content: toolResult.content,
-            toolCallId: toolResult.toolCallId,
-          });
-
-          if (toolResult.content && !toolResult.content.startsWith("Error")) {
-            gatheredInformation.push(
-              toolResult.content.length > 300 
-                ? `${toolResult.content.substring(0, 300)}...`
-                : toolResult.content
-            );
-          }
-        }
-        continue;
-      }
-
-      messages.push({ role: "assistant", content: result.content });
+      // AI SDK handles tool execution automatically
+      // The result.text is the final response after all tool executions
+      messages.push({ role: "assistant", content: result.text, timestamp: Date.now() });
+      
+      // Check if we need to continue gathering
       messages.push({
         role: "user",
         content: "If you have enough context, summarize. If not, use tools to gather more.",
+        timestamp: Date.now(),
       });
+      
+      // If the response indicates completion, break
+      if (result.text.toLowerCase().includes("summary") || result.text.toLowerCase().includes("gathered")) {
+        break;
+      }
     }
 
-    const summary = messages
-      .filter(m => m.role === "assistant")
-      .pop()?.content || "Context gathering completed.";
-
-    return {
-      enrichedContext: this.buildEnrichedContext(userRequest, gatheredInformation, summary),
-      gatheredInformation,
-      iterations,
-    };
-  }
-
-  private buildEnrichedContext(
-    userRequest: string,
-    gatheredInfo: string[],
-    summary: string
-  ): string {
+    const summary = messages.filter(m => m.role === "assistant").pop()?.content || "Context gathering completed.";
     const parts = [
       `Original request: ${userRequest}`,
       "",
-      ...(gatheredInfo.length > 0 
-        ? ["Gathered information:", ...gatheredInfo.map((info, idx) => `${idx + 1}. ${info}`), ""]
+      ...(gatheredInformation.length > 0 
+        ? ["Gathered information:", ...gatheredInformation.map((info, idx) => `${idx + 1}. ${info}`), ""]
         : []),
       `Summary: ${summary}`,
     ];
-    return parts.join("\n");
+
+    return {
+      enrichedContext: parts.join("\n"),
+      gatheredInformation,
+      iterations,
+    };
   }
 }

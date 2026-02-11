@@ -1,1 +1,1 @@
-export { createMouseTool } from "./tool.js";
+export { mouseTool } from "./tool.js";

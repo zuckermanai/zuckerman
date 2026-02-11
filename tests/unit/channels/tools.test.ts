@@ -1,8 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { createTelegramTool } from "@server/agents/zuckerman/tools/channels/telegram.js";
-import { createDiscordTool } from "@server/agents/zuckerman/tools/channels/discord.js";
-import { createSignalTool } from "@server/agents/zuckerman/tools/channels/signal.js";
-import { setChannelRegistry, getChannelRegistry } from "@server/agents/zuckerman/tools/channels/registry.js";
+import { telegramTool, discordTool, signalTool, setChannelRegistry, getChannelRegistry } from "@server/agents/zuckerman/tools/channels/index.js";
 import { ChannelRegistry } from "@server/world/communication/messengers/channels/registry.js";
 import { TelegramChannel } from "@server/world/communication/messengers/channels/telegram.js";
 import { DiscordChannel } from "@server/world/communication/messengers/channels/discord.js";

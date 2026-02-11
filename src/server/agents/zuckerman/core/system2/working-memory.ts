@@ -1,8 +1,14 @@
+import { generateText, Output } from "ai";
+import { z } from "zod";
 import type { WorkingMemory, StateUpdates } from "./types.js";
-import { LLMService } from "@server/world/providers/llm/llm-service.js";
+import type { LanguageModel } from "ai";
 import type { System2DebugLogger } from "./debug.js";
-import { extractJSON } from "./helper.js";
 import type { BrainModuleResult } from "./brain-module.js";
+import { Tool } from "ai";
+
+const memorySchema = z.object({
+  memories: z.array(z.string()),
+});
 
 export class WorkingMemoryManager {
   constructor(private memory: WorkingMemory) {}
@@ -32,7 +38,7 @@ export class WorkingMemoryManager {
   }
 
   async remember(
-    llmService: LLMService,
+    llmModel: LanguageModel,
     systemPrompt: string,
     brainResult: BrainModuleResult,
     brainPartId: string,
@@ -64,15 +70,6 @@ ${brainResultText}
 
 Think about what key information, insights, facts, or context you should remember for future cycles. Keep only the most important and relevant information. Update your working memory list.
 
-Respond in JSON format with an array of memory strings:
-{
-  "memories": [
-    "memory item 1",
-    "memory item 2",
-    ...
-  ]
-}
-
 Keep memories concise and actionable. Maximum 10 items.`;
 
     await debugLogger.logMemoryPrompt(memoryPrompt, currentMemory.memories);
@@ -82,35 +79,22 @@ Keep memories concise and actionable. Maximum 10 items.`;
         { role: "system" as const, content: systemPrompt },
         { role: "user" as const, content: memoryPrompt },
       ];
-      const result = await llmService.call({
+      const result = await generateText({
+        model: llmModel,
         messages,
         temperature: 0.2,
-        availableTools: [],
-        responseFormat: "json_object",
+        output: Output.object({ schema: memorySchema }),
       });
 
-      await debugLogger.logLLMCall("remember", messages, result, 0.2, []);
+      await debugLogger.logLLMCall("remember", messages, { content: result.text }, 0.2, []);
 
-      let decision;
-      try {
-        const jsonContent = extractJSON(result.content);
-        decision = JSON.parse(jsonContent);
-      } catch (error) {
-        await debugLogger.logError(new Error(`Failed to parse JSON: ${error}`), "remember");
-        throw new Error(`[System2] Failed to parse memory response: ${error}. Response: ${result.content.substring(0, 200)}`);
-      }
+      const decision = result.output;
       
-      if (!decision.memories) {
-        throw new Error(`[System2] Memory decision missing memories array: ${JSON.stringify(decision)}`);
-      }
-
-      if (!Array.isArray(decision.memories)) {
-        throw new Error(`[System2] Memory decision memories is not an array: ${JSON.stringify(decision)}`);
-      }
-
       if (decision.memories.length > 0) {
-        this.update({ memories: decision.memories });
-        await debugLogger.logMemoryUpdate(decision.memories);
+        // Limit to 10 items as per prompt guidance (Anthropic doesn't support maxItems in JSON schema)
+        const limitedMemories = decision.memories.slice(0, 10);
+        this.update({ memories: limitedMemories });
+        await debugLogger.logMemoryUpdate(limitedMemories);
       }
     } catch (error) {
       await debugLogger.logError(error, "remember");

@@ -1,6 +1,11 @@
-import type { RunContext } from "@server/world/providers/llm/context.js";
-import { LLMService } from "@server/world/providers/llm/llm-service.js";
-import { ToolService } from "../../tools/index.js";
+import { generateText, Output } from "ai";
+import { z } from "zod";
+import type { Tool } from "ai";
+import type { LanguageModel } from "ai";
+import type { StreamEventEmitter } from "@server/world/communication/stream-emitter.js";
+import { ToolRegistry } from "@server/agents/zuckerman/tools/registry.js";
+import { convertToModelMessages } from "@server/world/providers/llm/helpers.js";
+import type { ConversationMessage } from "@server/agents/zuckerman/conversations/types.js";
 
 export interface CriticismResult {
   satisfied: boolean;
@@ -11,25 +16,19 @@ export interface CriticismResult {
 const MAX_VERIFICATION_ITERATIONS = 5;
 
 export class CriticismService {
-  constructor(private context: RunContext) {}
+  constructor(
+    private llmModel: LanguageModel,
+    private streamEmitter: StreamEventEmitter,
+    private runId: string,
+    private availableTools: Record<string, Tool>,
+    private toolRegistry: ToolRegistry
+  ) {}
 
   async run(params: {
     userRequest: string;
     systemResult: string;
   }): Promise<CriticismResult> {
-    const llmService = new LLMService(
-      this.context.llmModel,
-      this.context.streamEmitter,
-      this.context.runId
-    );
-    const toolService = new ToolService();
-
-    const messages: Array<{
-      role: "user" | "assistant" | "system" | "tool";
-      content: string;
-      toolCalls?: Array<{ id: string; name: string; arguments: string }>;
-      toolCallId?: string;
-    }> = [
+    const messages: ConversationMessage[] = [
       {
         role: "system",
         content: `You are a validation assistant. Verify if the system result satisfies the user's request.
@@ -39,74 +38,32 @@ IMPORTANT CONTEXT: You are operating completely independently. There is no one e
 User asked: "${params.userRequest}"
 System did: ${params.systemResult}
 
-Use available tools to verify things if needed (check files, run commands, etc.).
-When done, respond with JSON:
-{
-  "satisfied": true/false,
-  "reason": "brief explanation",
-  "missing": ["what's still needed if not satisfied"]
-}`,
+Use available tools to verify things if needed (check files, run commands, etc.).`,
+        timestamp: Date.now(),
       },
       {
         role: "user",
         content: "Verify if the system result satisfies the user's request. Use tools if needed to check things.",
+        timestamp: Date.now(),
       },
     ];
 
-    let iterations = 0;
-    while (iterations < MAX_VERIFICATION_ITERATIONS) {
-      iterations++;
-      const result = await llmService.call({
-        messages,
-        temperature: 0.3,
-        availableTools: this.context.availableTools,
-      });
+    const criticismSchema = z.object({
+      satisfied: z.boolean(),
+      reason: z.string(),
+      missing: z.array(z.string()),
+    });
 
-      if (result.toolCalls?.length) {
-        messages.push({
-          role: "assistant",
-          content: result.content || "",
-          toolCalls: result.toolCalls.map(tc => ({
-            id: tc.id,
-            name: tc.name,
-            arguments: typeof tc.arguments === "string" ? tc.arguments : JSON.stringify(tc.arguments),
-          })),
-        });
+    // AI SDK handles tool execution automatically
+    const result = await generateText({
+      model: this.llmModel,
+      messages: convertToModelMessages(messages),
+      temperature: 0.3,
+      tools: this.availableTools,
+      output: Output.object({ schema: criticismSchema }),
+    });
 
-        const toolResults = await toolService.executeTools(this.context, result.toolCalls);
-        for (const toolResult of toolResults) {
-          messages.push({
-            role: "tool",
-            content: toolResult.content,
-            toolCallId: toolResult.toolCallId,
-          });
-        }
-        continue;
-      }
-
-      // No tool calls - LLM has finished verification
-      return this.parseResponse(result.content);
-    }
-
-    // Max iterations reached
-    return { satisfied: false, reason: "Verification timeout", missing: [] };
-  }
-
-  private parseResponse(content: string): CriticismResult {
-    try {
-      // Try to extract JSON from response
-      const jsonMatch = content.match(/\{[\s\S]*\}/);
-      const jsonStr = jsonMatch ? jsonMatch[0] : content;
-      const parsed = JSON.parse(jsonStr);
-      
-      return {
-        satisfied: Boolean(parsed.satisfied),
-        reason: String(parsed.reason || "No reason provided"),
-        missing: Array.isArray(parsed.missing) ? parsed.missing.map(String) : [],
-      };
-    } catch (error) {
-      console.warn(`[CriticismService] Parse failed:`, error);
-      return { satisfied: false, reason: "Could not parse response", missing: [] };
-    }
+    // No tool calls - LLM has finished verification
+    return result.output;
   }
 }

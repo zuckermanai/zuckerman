@@ -35,9 +35,12 @@
     "node": ">=22.0.0"
   },
   "dependencies": {
+    "@ai-sdk/anthropic": "^3.0.41",
+    "@ai-sdk/openai": "^3.0.26",
     "@sinclair/typebox": "^0.34.48",
     "@slack/bolt": "^4.6.0",
     "@whiskeysockets/baileys": "7.0.0-rc.9",
+    "ai": "^6.0.79",
     "chokidar": "^5.0.0",
     "commander": "^14.0.3",
     "croner": "^10.0.1",
@@ -50,7 +53,8 @@
     "pino": "^10.3.0",
     "playwright-core": "^1.58.1",
     "qrcode-terminal": "^0.12.0",
-    "ws": "^8.19.0"
+    "ws": "^8.19.0",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@types/node": "^25.2.0",

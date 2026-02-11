@@ -1,1 +1,1 @@
-export { createMultiEditTool } from "./tool.js";
+export { multieditTool } from "./tool.js";

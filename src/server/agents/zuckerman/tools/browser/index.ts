@@ -1,1 +1,1 @@
-export { createBrowserTool } from "./tool.js";
+export { browserTool } from "./tool.js";

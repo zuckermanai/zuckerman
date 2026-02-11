@@ -1,17 +1,15 @@
 import { randomUUID } from "node:crypto";
 import type { AgentRuntime, AgentRunParams, AgentRunResult } from "@server/world/runtime/agents/types.js";
-import type { LLMTool } from "@server/world/providers/llm/types.js";
 import { loadConfig } from "@server/world/config/index.js";
 import { ConversationManager } from "@server/agents/zuckerman/conversations/index.js";
 import { ToolRegistry } from "@server/agents/zuckerman/tools/registry.js";
-import { LLMManager } from "@server/world/providers/llm/index.js";
+import { LLMProvider } from "@server/world/providers/llm/index.js";
 import { IdentityLoader } from "../identity/identity-loader.js";
 import { agentDiscovery } from "@server/agents/discovery.js";
 import { resolveAgentHomedir } from "@server/world/homedir/resolver.js";
 import { UnifiedMemoryManager } from "@server/agents/zuckerman/core/memory/manager.js";
 import { resolveMemorySearchConfig } from "@server/agents/zuckerman/core/memory/config.js";
-import { LLMService } from "@server/world/providers/llm/llm-service.js";
-import type { RunContext } from "@server/world/providers/llm/context.js";
+import { generateText } from "ai";
 import { formatMemoriesForPrompt } from "../memory/prompt-formatter.js";
 import { StreamEventEmitter } from "@server/world/communication/stream-emitter.js";
 import { System1 } from "../system1/system1-central.js";
@@ -21,16 +19,16 @@ export class Self {
   readonly agentId: string;
   private identityLoader: IdentityLoader;
   private memoryManager!: UnifiedMemoryManager;
-  private llmManager: LLMManager;
+  private llmManager: LLMProvider;
   private conversationManager: ConversationManager;
   private toolRegistry: ToolRegistry;
   private readonly agentDir: string;
 
-  constructor(agentId: string, conversationManager?: ConversationManager, llmManager?: LLMManager, identityLoader?: IdentityLoader) {
+  constructor(agentId: string, conversationManager?: ConversationManager, llmManager?: LLMProvider, identityLoader?: IdentityLoader) {
     this.agentId = agentId;
     this.conversationManager = conversationManager || new ConversationManager(this.agentId);
     this.toolRegistry = new ToolRegistry();
-    this.llmManager = llmManager || LLMManager.getInstance();
+    this.llmManager = llmManager || LLMProvider.getInstance();
     this.identityLoader = identityLoader || new IdentityLoader();
 
     // Get agent directory from discovery service
@@ -64,15 +62,10 @@ export class Self {
     }
   }
 
-  /**
-   * Build execution context for a run
-   */
-  private async buildRunContext(params: AgentRunParams): Promise<RunContext> {
-    const { conversationId, message, temperature, securityContext, stream } = params;
-    const runId = randomUUID();
 
-    // Update tool registry conversation ID for batch tool context
-    this.toolRegistry.setConversationId(conversationId);
+  async run(params: AgentRunParams): Promise<AgentRunResult> {
+    const { conversationId, message, temperature, stream } = params;
+    const runId = randomUUID();
 
     // Get LLM model and config
     const config = await loadConfig();
@@ -82,79 +75,82 @@ export class Self {
     // Get system prompt
     const systemPrompt = await this.identityLoader.getSystemPrompt(this.agentDir);
 
-    // Prepare tools for LLM
-    const availableTools: LLMTool[] = this.toolRegistry.list().map(t => ({
-      type: "function" as const,
-      function: t.definition
-    }));
+    // Prepare tools for LLM - convert from registry format to AI SDK format
+    const { convertToAITools } = await import("@server/world/providers/llm/helpers.js");
+    const availableTools = convertToAITools(this.toolRegistry.getToolsMap());
 
-    // Build context
-    const context: RunContext = {
-      agentId: this.agentId,
-      conversationId,
-      runId,
-      message,
-      temperature,
-      securityContext,
-      homedir,
-      memoryManager: this.memoryManager,
-      toolRegistry: this.toolRegistry,
-      llmModel,
-      streamEmitter: new StreamEventEmitter(stream, this.agentId, conversationId),
-      availableTools,
-      systemPrompt,
-      relevantMemoriesText: "",
-    };
-
-    return context;
-  }
-
-  async run(params: AgentRunParams): Promise<AgentRunResult> {
-    const context = await this.buildRunContext(params);
+    const streamEmitter = new StreamEventEmitter(stream, this.agentId, conversationId);
 
     // Handle channel metadata
     if (params.channelMetadata) {
-      await this.conversationManager.updateChannelMetadata(context.conversationId, params.channelMetadata);
+      await this.conversationManager.updateChannelMetadata(conversationId, params.channelMetadata);
     }
 
     // Persist user message
-    await this.conversationManager.addMessage(context.conversationId, "user", context.message, { runId: context.runId });
+    await this.conversationManager.addMessage(conversationId, "user", message, { runId });
 
     // Get relevant memories
+    let relevantMemoriesText = "";
     try {
-      const memoryResult = await context.memoryManager.getRelevantMemories(context.message, {
+      const memoryResult = await this.memoryManager.getRelevantMemories(message, {
         limit: 50,
         types: ["semantic", "episodic", "procedural"],
       });
-      context.relevantMemoriesText = formatMemoriesForPrompt(memoryResult);
+      relevantMemoriesText = formatMemoriesForPrompt(memoryResult);
     } catch (error) {
       console.warn(`[self] Memory retrieval failed:`, error);
     }
 
     // Remember memories (async)
-    const conversationContext = this.conversationManager.getConversation(context.conversationId)?.messages.slice(-3).map(m => m.content).join("\n");
-    context.memoryManager.onNewMessage(context.message, context.conversationId, conversationContext)
+    const conversationContext = this.conversationManager.getConversation(conversationId)?.messages.slice(-3).map(m => m.content).join("\n");
+    this.memoryManager.onNewMessage(message, conversationId, conversationContext)
       .catch(err => console.warn(`[self] Failed to remember memories:`, err));
 
-    await context.streamEmitter.emitLifecycleStart(context.runId, context.message);
+    await streamEmitter.emitLifecycleStart(runId, message);
 
     try {
-      console.log(`[Self] Selecting system for message: "${context.message.substring(0, 100)}${context.message.length > 100 ? '...' : ''}"`);
-      const selectedSystem = await this.selectSystem(context);
-      console.log(`[Self] Selected ${selectedSystem.toUpperCase()} for runId: ${context.runId}`);
+      console.log(`[Self] Selecting system for message: "${message.substring(0, 100)}${message.length > 100 ? '...' : ''}"`);
+      const selectedSystem = await this.selectSystem(message, conversationId, llmModel, streamEmitter, runId);
+      console.log(`[Self] Selected ${selectedSystem.toUpperCase()} for runId: ${runId}`);
       
       if (selectedSystem === "system2") {
         console.log(`[Self] Routing to System2`);
-        const system2 = new System2(this.conversationManager, context);
+        const system2 = new System2(
+          this.conversationManager,
+          this.agentId,
+          conversationId,
+          runId,
+          message,
+          temperature,
+          homedir,
+          llmModel,
+          streamEmitter,
+          availableTools,
+          systemPrompt,
+          relevantMemoriesText
+        );
         return await system2.run();
       } else {
         console.log(`[Self] Routing to System1`);
-        const system1 = new System1(this.conversationManager, context);
+        const system1 = new System1(
+          this.conversationManager,
+          this.agentId,
+          conversationId,
+          runId,
+          message,
+          temperature,
+          llmModel,
+          streamEmitter,
+          availableTools,
+          systemPrompt,
+          relevantMemoriesText,
+          this.toolRegistry
+        );
         return await system1.run({useContextBuilder: true});
       }
     } catch (err) {
       console.error(`[ZuckermanRuntime] Error in run:`, err);
-      await context.streamEmitter.emitLifecycleError(context.runId, err instanceof Error ? err.message : String(err));
+      await streamEmitter.emitLifecycleError(runId, err instanceof Error ? err.message : String(err));
       throw err;
     }
   }
@@ -162,11 +158,16 @@ export class Self {
   /**
    * Determine which system (1 or 2) should handle the current message
    */
-  private async selectSystem(context: RunContext): Promise<"system1" | "system2"> {
-    console.log(`[Self] Starting system selection for runId: ${context.runId}`);
-    const llmService = new LLMService(context.llmModel, context.streamEmitter, context.runId);
+  private async selectSystem(
+    message: string,
+    conversationId: string,
+    llmModel: any,
+    streamEmitter: StreamEventEmitter,
+    runId: string
+  ): Promise<"system1" | "system2"> {
+    console.log(`[Self] Starting system selection for runId: ${runId}`);
     
-    const conversation = this.conversationManager.getConversation(context.conversationId);
+    const conversation = this.conversationManager.getConversation(conversationId);
     const conversationContext = conversation?.messages.slice(-3).map(m => `${m.role}: ${m.content}`).join("\n") || "No previous messages";
     
     const systemSelectionPrompt = `You ARE Zuckerman. You are thinking through your Self - your central coordinator deciding which processing system you should use.
@@ -189,26 +190,32 @@ System 2: Deliberate, analytical, multi-module processing. Use for:
 - Multi-faceted requests with multiple considerations
 - Tasks that benefit from parallel module evaluation
 
-What you need to do: "${context.message}"
+Respond with ONLY "system1" or "system2" - no other text.`;
+
+    const userPrompt = `What you need to do: "${message}"
 
 Conversation context: ${conversationContext}
 
-Respond with ONLY "system1" or "system2" - no other text.`;
+Which system should I use?`;
 
     try {
       console.log(`[Self] Calling LLM for system selection`);
-      const result = await llmService.call({
+      const result = await generateText({
+        model: llmModel,
         messages: [
           {
             role: "system",
             content: systemSelectionPrompt,
           },
+          {
+            role: "user",
+            content: userPrompt,
+          },
         ],
         temperature: 0.1,
-        availableTools: [],
       });
 
-      const rawSelection = result.content.trim();
+      const rawSelection = result.text.trim();
       const selection = rawSelection.toLowerCase();
       console.log(`[Self] LLM raw response: "${rawSelection}"`);
       

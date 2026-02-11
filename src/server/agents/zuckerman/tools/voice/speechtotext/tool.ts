@@ -1,88 +1,51 @@
-import type { Tool } from "../../terminal/index.js";
-import type { SecurityContext } from "@server/world/execution/security/types.js";
-import { isToolAllowed } from "@server/world/execution/security/policy/tool-policy.js";
+import { tool, zodSchema } from "@ai-sdk/provider-utils";
+import { z } from "zod";
 import { transcribeAudio } from "./index.js";
 
-export function createSpeechToTextTool(): Tool {
-  return {
-    definition: {
-      name: "speech_to_text",
-      description: "Transcribe audio file to text. Use when the user sends an audio file or voice message that needs to be converted to text.",
-      parameters: {
-        type: "object",
-        properties: {
-          audioPath: {
-            type: "string",
-            description: "Path to the audio file to transcribe",
-          },
-          provider: {
-            type: "string",
-            description: "STT provider: openai, deepgram, or groq (optional, uses config default)",
-            enum: ["openai", "deepgram", "groq", "whisper"],
-          },
-          language: {
-            type: "string",
-            description: "Language code (e.g., 'en', 'en-US'). Optional, provider will auto-detect if not specified.",
-          },
-          prompt: {
-            type: "string",
-            description: "Optional context prompt to help improve transcription accuracy",
-          },
-        },
-        required: ["audioPath"],
-      },
-    },
-    handler: async (params, securityContext) => {
-      try {
-        const { audioPath, provider, language, prompt } = params;
+const speechToTextToolInputSchema = z.object({
+  audioPath: z.string().describe("Path to the audio file to transcribe"),
+  provider: z.enum(["openai", "deepgram", "groq", "whisper"]).optional().describe("STT provider: openai, deepgram, or groq (optional, uses config default)"),
+  language: z.string().optional().describe("Language code (e.g., 'en', 'en-US'). Optional, provider will auto-detect if not specified."),
+  prompt: z.string().optional().describe("Optional context prompt to help improve transcription accuracy"),
+});
 
-        if (typeof audioPath !== "string" || audioPath.trim().length === 0) {
-          return {
-            success: false,
-            error: "audioPath is required and must be a non-empty string",
-          };
-        }
+type SpeechToTextToolInput = z.infer<typeof speechToTextToolInputSchema>;
 
-        // Check tool security
-        if (securityContext) {
-          const toolAllowed = isToolAllowed("speech_to_text", securityContext.toolPolicy);
-          if (!toolAllowed) {
-            return {
-              success: false,
-              error: "Speech-to-text tool is not allowed by security policy",
-            };
-          }
-        }
+export const speechToTextTool = tool<SpeechToTextToolInput, string>({
+  description: "Transcribe audio file to text. Use when the user sends an audio file or voice message that needs to be converted to text.",
+  inputSchema: zodSchema(speechToTextToolInputSchema),
+  execute: async (params) => {
+    try {
+      const { audioPath, provider, language, prompt } = params;
 
-        // Transcribe audio
-        const result = await transcribeAudio({
-          audioPath,
-          provider: provider as "openai" | "deepgram" | "groq" | "whisper" | undefined,
-          language: typeof language === "string" ? language : undefined,
-          prompt: typeof prompt === "string" ? prompt : undefined,
-        });
+      // Transcribe audio
+      const result = await transcribeAudio({
+        audioPath,
+        provider: provider,
+        language: language,
+        prompt: prompt,
+      });
 
-        if (!result.success || !result.text) {
-          return {
-            success: false,
-            error: result.error || "Transcription failed",
-          };
-        }
-
-        return {
-          success: true,
-          result: {
-            text: result.text,
-            provider: result.provider,
-            latencyMs: result.latencyMs,
-          },
-        };
-      } catch (err) {
-        return {
+      if (!result.success || !result.text) {
+        return JSON.stringify({
           success: false,
-          error: err instanceof Error ? err.message : "Unknown error",
-        };
+          error: result.error || "Transcription failed",
+        });
       }
-    },
-  };
-}
+
+      return JSON.stringify({
+        success: true,
+        result: {
+          text: result.text,
+          provider: result.provider,
+          latencyMs: result.latencyMs,
+        },
+      });
+    } catch (err) {
+      return JSON.stringify({
+        success: false,
+        error: err instanceof Error ? err.message : "Unknown error",
+      });
+    }
+  },
+});

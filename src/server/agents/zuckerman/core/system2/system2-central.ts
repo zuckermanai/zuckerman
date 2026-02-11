@@ -1,47 +1,59 @@
-import type { RunContext } from "@server/world/providers/llm/context.js";
-import { LLMService } from "@server/world/providers/llm/llm-service.js";
+import { generateText, Output } from "ai";
+import { z } from "zod";
 import { ConversationManager } from "@server/agents/zuckerman/conversations/index.js";
 import { BrainModule } from "./brain-module.js";
 import type { BrainGoal, ExecutionHistoryEntry } from "./types.js";
 import { BRAIN_PARTS, getBrainPart } from "./brain-parts.js";
 import { WorkingMemoryManager } from "./working-memory.js";
 import { System2DebugLogger } from "./debug.js";
-import { extractJSON, formatHistoryText, formatWorkingMemoryText } from "./helper.js";
+import { formatHistoryText, formatWorkingMemoryText } from "./helper.js";
 import { randomUUID } from "node:crypto";
+import type { Tool } from "ai";
+import type { LanguageModel } from "ai";
+import type { StreamEventEmitter } from "@server/world/communication/stream-emitter.js";
 
 export class System2 {
   constructor(
     private conversationManager: ConversationManager,
-    private context: RunContext
+    private agentId: string,
+    private conversationId: string,
+    private runId: string,
+    private message: string,
+    private temperature: number | undefined,
+    private homedir: string,
+    private llmModel: LanguageModel,
+    private streamEmitter: StreamEventEmitter,
+    private availableTools: Record<string, Tool>,
+    private systemPrompt: string,
+    private relevantMemoriesText: string
   ) {}
 
   async run(): Promise<{ runId: string; response: string; tokensUsed?: number }> {
-    const llmService = new LLMService(this.context.llmModel, this.context.streamEmitter, this.context.runId);
     const maxCycles = 100; // Safety limit for infinite loop
     let cycles = 0;
 
     const executionHistory: ExecutionHistoryEntry[] = [];
-    const debugLogger = new System2DebugLogger(this.context.runId, this.context.homedir);
+    const debugLogger = new System2DebugLogger(this.runId, this.homedir);
     await debugLogger.initialize();
     await debugLogger.logSystemStart(
-      this.context.message,
-      this.context.relevantMemoriesText || "",
+      this.message,
+      this.relevantMemoriesText || "",
       {
-        agentId: this.context.agentId,
-        conversationId: this.context.conversationId,
-        systemPrompt: this.context.systemPrompt,
-        availableTools: this.context.availableTools.map(t => ({
-          name: t.function.name,
-          description: t.function.description,
+        agentId: this.agentId,
+        conversationId: this.conversationId,
+        systemPrompt: this.systemPrompt,
+        availableTools: Object.entries(this.availableTools).map(([name, tool]: [string, Tool]) => ({
+          name,
+          description: (tool as any).description || (tool as any).function?.description || "No description available",
         })),
-        temperature: this.context.temperature,
+        temperature: this.temperature,
       }
     );
 
-    const workingMemory = WorkingMemoryManager.initialize(this.context.relevantMemoriesText);
+    const workingMemory = WorkingMemoryManager.initialize(this.relevantMemoriesText);
     const workingMemoryManager = new WorkingMemoryManager(workingMemory);
     workingMemoryManager.update({
-      memories: [`I need to: ${this.context.message}`, ...workingMemory.memories],
+      memories: [`I need to: ${this.message}`, ...workingMemory.memories],
     });
 
     await debugLogger.logWorkingMemory(workingMemoryManager.getState().memories);
@@ -50,23 +62,23 @@ export class System2 {
       cycles++;
       await debugLogger.logCycleStart(cycles);
 
-      const decision = await this.coordinateNext(llmService, workingMemoryManager, executionHistory, debugLogger);
+      const decision = await this.coordinateNext(workingMemoryManager, executionHistory, debugLogger);
       await debugLogger.logDecision(decision);
             
       if (decision.shouldStop) {
         const finalResponse = decision.reason || "Task completed";
         await this.conversationManager.addMessage(
-          this.context.conversationId,
+          this.conversationId,
           "assistant",
           finalResponse,
-          { runId: this.context.runId }
+          { runId: this.runId }
         );
-        await debugLogger.logConversationMessage("assistant", finalResponse, { runId: this.context.runId });
-        await this.context.streamEmitter.emitLifecycleEnd(this.context.runId, 0, finalResponse);
+        await debugLogger.logConversationMessage("assistant", finalResponse, { runId: this.runId });
+        await this.streamEmitter.emitLifecycleEnd(this.runId, 0, finalResponse);
         await debugLogger.logSystemEnd(finalResponse, cycles);
         
         return {
-          runId: this.context.runId,
+          runId: this.runId,
           response: finalResponse,
         };
       }
@@ -99,7 +111,12 @@ export class System2 {
 
       const brainModule = new BrainModule(
         this.conversationManager,
-        this.context,
+        this.conversationId,
+        this.runId,
+        this.llmModel,
+        this.streamEmitter,
+        this.temperature,
+        this.availableTools,
         brainPart,
         goal,
         workingMemoryManager,
@@ -121,7 +138,7 @@ export class System2 {
         toolCallsMade: brainResult.toolCallsMade,
       });
 
-      await workingMemoryManager.remember(llmService, this.context.systemPrompt, brainResult, brainPart.id, brainPart.name, debugLogger);
+      await workingMemoryManager.remember(this.llmModel, this.systemPrompt, brainResult, brainPart.id, brainPart.name, debugLogger);
 
       executionHistory.push({
         brainPartId: brainPart.id,
@@ -137,23 +154,22 @@ export class System2 {
 
     const timeoutResponse = "System2 reached maximum cycles. Task may be incomplete.";
     await this.conversationManager.addMessage(
-      this.context.conversationId,
+      this.conversationId,
       "assistant",
       timeoutResponse,
-      { runId: this.context.runId }
+      { runId: this.runId }
     );
-    await debugLogger.logConversationMessage("assistant", timeoutResponse, { runId: this.context.runId });
-    await this.context.streamEmitter.emitLifecycleEnd(this.context.runId, 0, timeoutResponse);
+    await debugLogger.logConversationMessage("assistant", timeoutResponse, { runId: this.runId });
+    await this.streamEmitter.emitLifecycleEnd(this.runId, 0, timeoutResponse);
     await debugLogger.logSystemEnd(timeoutResponse, cycles);
 
     return {
-      runId: this.context.runId,
+      runId: this.runId,
       response: timeoutResponse,
     };
   }
 
   private async coordinateNext(
-    llmService: LLMService,
     workingMemoryManager: WorkingMemoryManager,
     executionHistory: ExecutionHistoryEntry[],
     debugLogger: System2DebugLogger
@@ -193,45 +209,39 @@ Guidance:
 - interaction: communicate with users/systems
 - error-handling: handle errors/obstacles
 
-Respond in JSON:
-{
-  "action": "stop" | "continue",
-  "reason": string,
-  "brainPartId": string,
-  "goal": string
-}
-
 If action is "stop", provide reason. If "continue", provide brainPartId and goal.`;
 
     await debugLogger.logDecisionPrompt(decisionPrompt, workingMemory.memories, executionHistory);
 
-    const messages = [
-      { role: "system" as const, content: this.context.systemPrompt },
-      { role: "user" as const, content: decisionPrompt },
-    ];
-    const result = await llmService.call({
-      messages,
-      temperature: 0.3,
-      availableTools: [],
-      responseFormat: "json_object",
+    const decisionSchema = z.object({
+      action: z.enum(["stop", "continue"]),
+      reason: z.string(),
+      brainPartId: z.string(),
+      goal: z.string(),
     });
 
-    await debugLogger.logLLMCall("coordinateNext", messages, result, 0.3, []);
+    const messages = [
+      { role: "system" as const, content: this.systemPrompt },
+      { role: "user" as const, content: decisionPrompt },
+    ];
+    const result = await generateText({
+      model: this.llmModel,
+      messages,
+      temperature: 0.3,
+      tools: {} as Record<string, Tool>,
+      output: Output.object({ schema: decisionSchema }),
+    });
 
-    try {
-      const jsonContent = extractJSON(result.content);
-      const decision = JSON.parse(jsonContent);
-      const shouldStop = decision.action === "stop";
-      return {
-        brainPartId: shouldStop ? "" : (decision.brainPartId || ""),
-        goal: shouldStop ? "" : (decision.goal || ""),
-        shouldStop,
-        reason: decision.reason,
-      };
-    } catch (error) {
-      await debugLogger.logError(new Error(`Failed to parse JSON: ${error}`), "coordinateNext");
-      throw new Error(`[System2] Failed to parse decision response: ${error}. Response: ${result.content.substring(0, 200)}`);
-    }
+    await debugLogger.logLLMCall("coordinateNext", messages, { content: result.text }, 0.3, []);
+
+    const decision = result.output;
+    const shouldStop = decision.action === "stop";
+    return {
+      brainPartId: shouldStop ? "" : (decision.brainPartId || ""),
+      goal: shouldStop ? "" : (decision.goal || ""),
+      shouldStop,
+      reason: decision.reason,
+    };
   }
 
 }

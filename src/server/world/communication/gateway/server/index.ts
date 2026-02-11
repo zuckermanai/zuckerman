@@ -9,7 +9,7 @@ import { initializeChannels } from "@server/world/communication/messengers/chann
 import { loadConfig } from "@server/world/config/index.js";
 import { AgentRuntimeFactory } from "@server/world/runtime/agents/index.js";
 import { SimpleRouter } from "@server/world/communication/routing/index.js";
-import { setCronExecutionContext } from "@server/agents/zuckerman/tools/cron/execution-context.js";
+import { setCronExecutionContext } from "@server/agents/zuckerman/calendar/execution-context.js";
 
 export interface GatewayServerOptions {
   port?: number;

@@ -1,5 +1,8 @@
-import { LLMManager } from "@server/world/providers/llm/index.js";
+import { generateText, Output } from "ai";
+import { z } from "zod";
+import { LLMProvider } from "@server/world/providers/llm/index.js";
 import type { ConversationMessage } from "@server/agents/zuckerman/conversations/types.js";
+import { convertToModelMessages } from "@server/world/providers/llm/helpers.js";
 
 function getTokens(messages: ConversationMessage[]): number {
   return messages.reduce((sum, m) => sum + Math.ceil((m.content?.length || 0) / 4), 0);
@@ -20,9 +23,14 @@ export async function pruneUnusedMessages(
   ).join("\n");
 
   try {
-    const llm = await LLMManager.getInstance().fastCheap();
-    const res = await llm.call({
-      messages: [{
+    const llm = await LLMProvider.getInstance().fastCheap();
+    const indicesSchema = z.object({
+      indices: z.array(z.number()),
+    });
+    
+    const res = await generateText({
+      model: llm,
+      messages: convertToModelMessages([{
         role: "user",
         content: `You are analyzing a conversation with ${activeMessages.length} messages (${getTokens(activeMessages)} tokens). The token limit is ${threshold}. Identify message indices to ignore that don't add value for future responses.
 
@@ -39,23 +47,24 @@ KEEP:
 - Recent messages (last few exchanges)
 - Tool call results that provide actionable information
 
-Return ONLY a JSON array of indices to ignore, e.g., [0, 2, 5]. Do not include explanations.
-
 Messages:
 ${text}`,
-      }],
+        timestamp: Date.now(),
+      }]),
       temperature: 0.3,
+      output: Output.object({ schema: indicesSchema }),
     });
 
-    const match = res.content.match(/\[.*\]/s);
-    if (match) {
-      const indices = new Set(JSON.parse(match[0]) as number[]);
-      console.log(`[Prune] Pruned messages:`, indices);
+    const indices = res.output.indices;
+
+    if (indices.length > 0) {
+      const indicesSet = new Set(indices);
+      console.log(`[Prune] Pruned messages:`, indicesSet);
       // Mark messages as ignored (preserve original array structure)
       const result = [...messages];
       let activeIndex = 0;
       for (let i = 0; i < result.length; i++) {
-        if (!result[i].ignore && indices.has(activeIndex)) {
+        if (!result[i].ignore && indicesSet.has(activeIndex)) {
           result[i] = { ...result[i], ignore: true };
         }
         if (!result[i].ignore) activeIndex++;
