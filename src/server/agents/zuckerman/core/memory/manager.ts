@@ -212,6 +212,21 @@ export class UnifiedMemoryManager implements MemoryManager {
   }
 
   /**
+   * Set working memory for a conversation
+   */
+  setWorkingMemory(conversationId: string, content: string): void {
+    this.workingMemory.set(conversationId, content);
+  }
+
+  /**
+   * Get working memory for a conversation
+   */
+  getWorkingMemory(conversationId: string): { content: string } | null {
+    const wm = this.workingMemory.get(conversationId);
+    return wm ? { content: wm.content } : null;
+  }
+
+  /**
    * Get relevant memories for a question/query
    * Fetches all memories from specified memory types
    */

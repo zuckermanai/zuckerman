@@ -3,5 +3,5 @@ export interface BrainPart {
   name: string;
   maxIterations?: number;
   toolsAllowed?: boolean;
-  getPrompt: (goal: string, workingMemory: string[], historyText: string) => string;
+  getPrompt: (workingMemory: string[]) => string;
 }
