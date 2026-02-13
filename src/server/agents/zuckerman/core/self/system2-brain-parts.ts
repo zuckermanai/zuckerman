@@ -17,6 +17,7 @@ export const SYSTEM2_BRAIN_PARTS: BrainPart[] = [
     id: "planning",
     name: "Planning Module",
     maxIterations: 10,
+    temperature: 0.5,
     getPrompt: (workingMemory: string[]) => {
       const memoryText = formatMemoryText(workingMemory);
       return `${getCommonContext()}
@@ -39,6 +40,7 @@ You complete this when you have created a clear, actionable plan that you can ex
     id: "execution",
     name: "Execution Module",
     maxIterations: 15,
+    temperature: 0.7,
     getPrompt: (workingMemory: string[]) => {
       const memoryText = formatMemoryText(workingMemory);
       return `${getCommonContext()}
@@ -60,6 +62,7 @@ You complete this when you have successfully executed the task and have results.
     id: "reflection",
     name: "Reflection Module",
     maxIterations: 5,
+    temperature: 0.5,
     getPrompt: (workingMemory: string[]) => {
       const memoryText = formatMemoryText(workingMemory);
       return `${getCommonContext()}
@@ -82,6 +85,7 @@ You complete this when you have meaningful reflection and insights for yourself.
     id: "criticism",
     name: "Criticism Module",
     maxIterations: 5,
+    temperature: 0.4,
     getPrompt: (workingMemory: string[]) => {
       const memoryText = formatMemoryText(workingMemory);
       return `${getCommonContext()}
@@ -104,6 +108,7 @@ You complete this when you have thoroughly evaluated your work and identified wh
     id: "creativity",
     name: "Creativity Module",
     maxIterations: 10,
+    temperature: 0.9,
     getPrompt: (workingMemory: string[]) => {
       const memoryText = formatMemoryText(workingMemory);
       return `${getCommonContext()}
@@ -126,6 +131,7 @@ You complete this when you have generated creative ideas or solutions you can pu
     id: "attention",
     name: "Attention Module",
     maxIterations: 10,
+    temperature: 0.6,
     getPrompt: (workingMemory: string[]) => {
       const memoryText = formatMemoryText(workingMemory);
       return `${getCommonContext()}
@@ -148,6 +154,7 @@ You complete this when you have identified and focused on the most relevant info
     id: "interaction",
     name: "Interaction Module",
     maxIterations: 10,
+    temperature: 0.7,
     getPrompt: (workingMemory: string[]) => {
       const memoryText = formatMemoryText(workingMemory);
       return `${getCommonContext()}
@@ -170,6 +177,7 @@ You complete this when you have successfully completed the communication.`;
     id: "error-handling",
     name: "Error Handling Module",
     maxIterations: 15,
+    temperature: 0.6,
     getPrompt: (workingMemory: string[]) => {
       const memoryText = formatMemoryText(workingMemory);
       return `${getCommonContext()}
@@ -195,6 +203,7 @@ You complete this when you have identified viable alternative paths to overcome 
     name: "Prediction Module",
     maxIterations: 10,
     toolsAllowed: false,
+    temperature: 0.4,
     getPrompt: (workingMemory: string[]) => {
       const memoryText = formatMemoryText(workingMemory);
       return `${getCommonContext()}
@@ -225,6 +234,7 @@ You complete this when you have identified key potential errors/issues and know 
     id: "research",
     name: "Research Module",
     maxIterations: 20,
+    temperature: 0.3,
     getPrompt: (workingMemory: string[]) => {
       const memoryText = formatMemoryText(workingMemory);
       return `${getCommonContext()}
@@ -234,21 +244,11 @@ You ARE Zuckerman. You are researching through your Research Module - this is ho
 Your ONLY job is to research HOW to accomplish tasks, not to execute them.
 
 CRITICAL: If the goal is "Find X" or "Get X" or "Do X", you must research:
-- What tools/APIs/services can accomplish X?
-- What are the best methods to accomplish X?
-- How do others solve this problem?
-- What are the pros/cons of different approaches?
-
-You are NOT executing the task. You are researching the SOLUTION to the task.
-
-${memoryText}
-
-Research workflow:
-1. Search for tools/APIs/methods that can accomplish this task
-2. Compare different solutions (free vs paid, reliability, ease of use)
-3. Read documentation to understand requirements and limitations
-4. Extract key information: API endpoints, authentication, rate limits, pricing, features
-5. Once you have 2-3 viable solutions with sufficient detail, STOP and present findings
+- With what tools/APIs/services I can accomplish X based on my resources and capabilities?
+- What are the best methods to accomplish X based on my resources and capabilities?
+- How do others solve this problem based on my resources and capabilities?
+- What are the pros/cons of different approaches based on my resources and capabilities?
+- What are the best tools/APIs/services to accomplish X based on my resources and capabilities?
 
 You MUST use the browser tool:
 - Navigate: "https://www.google.com/search?q=your+search+query" (URL encode spaces as +)

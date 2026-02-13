@@ -3,5 +3,6 @@ export interface BrainPart {
   name: string;
   maxIterations?: number;
   toolsAllowed?: boolean;
+  temperature?: number;
   getPrompt: (workingMemory: string[]) => string;
 }

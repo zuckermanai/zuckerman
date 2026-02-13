@@ -26,7 +26,6 @@ import {
 } from "./transcript.js";
 import { generateShortID } from "@shared/utils/id.js";
 import { activityRecorder } from "@server/agents/zuckerman/activity/index.js";
-import { pruneUnusedMessages } from "@server/agents/zuckerman/core/memory/memory-conversation-optimizer.js";
 
 // Helper to convert message content to string for transcript
 function contentToString(content: ConversationMessage["content"]): string {
@@ -400,9 +399,6 @@ export class ConversationManager {
       
       state.messages.push(message);
       state.conversation.lastActivity = Date.now();
-
-      // Prune messages if threshold exceeded
-      state.messages = await pruneUnusedMessages(state.messages);
 
       const result = await this.getOrCreateEntry(id);
       if (!result) return;
