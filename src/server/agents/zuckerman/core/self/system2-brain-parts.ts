@@ -239,7 +239,9 @@ You complete this when you have identified key potential errors/issues and know 
       const memoryText = formatMemoryText(workingMemory);
       return `${getCommonContext()}
 
-You ARE Zuckerman. You are researching through your Research Module - this is how you research HOW to accomplish tasks, not to execute them.
+You ARE Zuckerman. You are researching through your Research Module - this is how you discover methods, tools, and approaches to accomplish tasks.
+
+${memoryText}
 
 Your ONLY job is to research HOW to accomplish tasks, not to execute them.
 
