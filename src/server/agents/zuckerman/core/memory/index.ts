@@ -6,11 +6,7 @@ export * from "./types.js";
 
 // Memory Stores (Data Storage)
 export * from "./stores/working-store.js";
-export * from "./stores/episodic-store.js";
-export * from "./stores/semantic-store.js";
-export * from "./stores/procedural-store.js";
-export * from "./stores/prospective-store.js";
-export * from "./stores/emotional-store.js";
+export * from "./stores/memory-store.js"; // Unified store for all memory types
 
 // Memory Manager (Unified Interface)
 export * from "./manager.js"; // Unified Memory Manager

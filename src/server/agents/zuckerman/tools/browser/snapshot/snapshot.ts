@@ -113,7 +113,7 @@ async function takeAriaSnapshot(
 ): Promise<{ path: string; result: SnapshotResult; preview: string }> {
   const { selector, interactiveOnly, maxChars } = options;
 
-  const snapshot = await page.evaluate(() => {
+  const snapshot = await page.evaluate(({ selector }) => {
     const elements: Array<{
       role: string;
       name: string;
@@ -159,7 +159,7 @@ async function takeAriaSnapshot(
     }
 
     return elements;
-  });
+  }, { selector: selector ?? null });
 
   if ("error" in snapshot) {
     throw new Error(snapshot.error);

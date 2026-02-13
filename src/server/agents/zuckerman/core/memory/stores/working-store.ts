@@ -7,14 +7,21 @@ import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { getAgentMemoryStorePath } from "@server/world/homedir/paths.js";
-import type { WorkingMemory } from "../types.js";
 
-export interface WorkingMemoryStorage {
-  memories: WorkingMemory[];
+interface WorkingMemoryItem {
+  id: string;
+  content: string;
+  createdAt: number;
+  updatedAt: number;
+  expiresAt?: number;
+}
+
+interface WorkingMemoryStorage {
+  memories: WorkingMemoryItem[];
 }
 
 export class WorkingMemoryStore {
-  private memory: WorkingMemory | null = null;
+  private memories = new Map<string, WorkingMemoryItem>();
   private readonly defaultTtl = 60 * 60 * 1000; // 1 hour default TTL
   private storagePath: string;
 
@@ -23,9 +30,6 @@ export class WorkingMemoryStore {
     this.load();
   }
 
-  /**
-   * Load working memory from file
-   */
   private load(): void {
     if (!this.storagePath || !existsSync(this.storagePath)) return;
 
@@ -33,23 +37,22 @@ export class WorkingMemoryStore {
       const raw = readFileSync(this.storagePath, "utf-8");
       const data = JSON.parse(raw) as WorkingMemoryStorage;
       
-      if (data.memories && data.memories.length > 0) {
-        // Get the most recent non-expired memory
+      if (Array.isArray(data.memories)) {
         const now = Date.now();
-        const active = data.memories
-          .filter(m => !m.expiresAt || m.expiresAt >= now)
-          .sort((a, b) => b.updatedAt - a.updatedAt)[0];
-        
-        this.memory = active || null;
+        for (const memory of data.memories) {
+          if (memory && typeof memory === "object" && memory.id && memory.content) {
+            // Only load non-expired memories
+            if (!memory.expiresAt || memory.expiresAt >= now) {
+              this.memories.set(memory.id, memory);
+            }
+          }
+        }
       }
     } catch (error) {
       console.warn(`Failed to load working memory from ${this.storagePath}:`, error);
     }
   }
 
-  /**
-   * Save working memory to file
-   */
   private save(): void {
     if (!this.storagePath) return;
 
@@ -60,7 +63,7 @@ export class WorkingMemoryStore {
       }
 
       const data: WorkingMemoryStorage = {
-        memories: this.memory ? [this.memory] : [],
+        memories: Array.from(this.memories.values()),
       };
 
       writeFileSync(this.storagePath, JSON.stringify(data, null, 2), "utf-8");
@@ -70,91 +73,155 @@ export class WorkingMemoryStore {
   }
 
   /**
-   * Set working memory
+   * Set working memory - replaces all existing memories with new array
    */
-  set(content: string, context?: Record<string, unknown>, ttl?: number): void {
-    const expiresAt = Date.now() + (ttl ?? this.defaultTtl);
-    
-    const memory: WorkingMemory = {
-      id: randomUUID(),
-      type: "working",
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-      content,
-      context: context ?? {},
-      expiresAt,
-    };
+  set(content: string, ttl?: number): void {
+    // Parse content if it's a JSON array string, otherwise treat as single item
+    let items: string[] = [];
+    try {
+      const parsed = JSON.parse(content);
+      if (Array.isArray(parsed)) {
+        items = parsed;
+      } else {
+        items = [content];
+      }
+    } catch {
+      items = [content];
+    }
 
-    this.memory = memory;
+    // Clear existing memories
+    this.memories.clear();
+
+    // Add new memories
+    const expiresAt = Date.now() + (ttl ?? this.defaultTtl);
+    const now = Date.now();
+    
+    for (const itemContent of items) {
+      const id = randomUUID();
+      this.memories.set(id, {
+        id,
+        content: itemContent,
+        createdAt: now,
+        updatedAt: now,
+        expiresAt,
+      });
+    }
+
     this.save();
   }
 
   /**
-   * Get working memory
+   * Get all working memory items as array of strings
    */
-  get(): WorkingMemory | null {
-    if (!this.memory) return null;
+  getAllItems(): string[] {
+    const now = Date.now();
+    const validMemories: string[] = [];
+    const expiredIds: string[] = [];
     
-    // Check if expired
-    if (this.memory.expiresAt && this.memory.expiresAt < Date.now()) {
-      this.memory = null;
-      return null;
+    for (const memory of this.memories.values()) {
+      if (!memory.expiresAt || memory.expiresAt >= now) {
+        validMemories.push(memory.content);
+      } else {
+        expiredIds.push(memory.id);
+      }
     }
     
-    return this.memory;
+    // Remove expired memories
+    for (const id of expiredIds) {
+      this.memories.delete(id);
+    }
+    
+    if (expiredIds.length > 0) {
+      this.save();
+    }
+    
+    return validMemories;
   }
 
   /**
-   * Update working memory content
+   * Get all working memory items as objects
    */
-  update(updates: Partial<Pick<WorkingMemory, "content" | "context">>): void {
-    if (!this.memory) return;
+  getAll(): WorkingMemoryItem[] {
+    const now = Date.now();
+    const validMemories: WorkingMemoryItem[] = [];
+    const expiredIds: string[] = [];
+    
+    for (const memory of this.memories.values()) {
+      if (!memory.expiresAt || memory.expiresAt >= now) {
+        validMemories.push(memory);
+      } else {
+        expiredIds.push(memory.id);
+      }
+    }
+    
+    // Remove expired memories
+    for (const id of expiredIds) {
+      this.memories.delete(id);
+    }
+    
+    if (expiredIds.length > 0) {
+      this.save();
+    }
+    
+    return validMemories;
+  }
 
-    this.memory = {
-      ...this.memory,
+  /**
+   * Add a single memory item
+   */
+  add(content: string, ttl?: number): string {
+    const expiresAt = Date.now() + (ttl ?? this.defaultTtl);
+    const id = randomUUID();
+    const now = Date.now();
+    
+    this.memories.set(id, {
+      id,
+      content,
+      createdAt: now,
+      updatedAt: now,
+      expiresAt,
+    });
+    
+    this.save();
+    return id;
+  }
+
+  /**
+   * Update a memory item
+   */
+  update(id: string, updates: Partial<Pick<WorkingMemoryItem, "content">>): boolean {
+    const memory = this.memories.get(id);
+    if (!memory) {
+      return false;
+    }
+
+    const updated: WorkingMemoryItem = {
+      ...memory,
       ...updates,
       updatedAt: Date.now(),
     };
+
+    this.memories.set(id, updated);
     this.save();
+    return true;
   }
 
   /**
-   * Clear working memory
+   * Delete a memory item
    */
-  clear(): void {
-    this.memory = null;
-    this.save();
-  }
-
-  /**
-   * Clear all expired working memories
-   */
-  clearExpired(): void {
-    if (this.memory && this.memory.expiresAt && this.memory.expiresAt < Date.now()) {
-      this.memory = null;
+  delete(id: string): boolean {
+    const deleted = this.memories.delete(id);
+    if (deleted) {
       this.save();
     }
+    return deleted;
   }
 
   /**
-   * Clear all working memories
+   * Clear all working memory
    */
-  clearAll(): void {
-    this.memory = null;
+  clear(): void {
+    this.memories.clear();
     this.save();
-  }
-
-  /**
-   * Get all active working memories
-   */
-  getAll(): WorkingMemory[] {
-    if (!this.memory) return [];
-    
-    const now = Date.now();
-    if (this.memory.expiresAt && this.memory.expiresAt < now) {
-      return [];
-    }
-    
-    return [this.memory];
   }
 }

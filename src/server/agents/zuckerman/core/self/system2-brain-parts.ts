@@ -302,5 +302,13 @@ Review your working memory and decide:
 - **Update**: Refine and consolidate information rather than duplicating
 - **Limit**: Working memory should stay focused and relevant - don't keep everything
 
-The memories array you return will completely replace the current working memory. Be selective - include only what's truly relevant for future decisions and actions.`;
+## Output Format
+You MUST return exactly ONE JSON object with the following structure:
+- action: one of "respond", "think", or "sleep"
+- memories: an array of strings representing the updated working memory
+- conversationId: the conversationId from working memory if action is "respond", otherwise an empty string
+
+The memories array you return will completely replace the current working memory. Be selective - include only what's truly relevant for future decisions and actions.
+
+CRITICAL: Return ONLY ONE JSON object. Do not return multiple JSON objects or any text outside the JSON object.`;
 }

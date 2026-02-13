@@ -14,7 +14,7 @@ import {
 } from "@server/world/homedir/paths.js";
 import type { ResolvedMemorySearchConfig } from "../config.js";
 import type { EmbeddingProvider } from "@server/world/providers/embeddings/index.js";
-import type { BaseMemory, EpisodicMemory, ProceduralMemory, ProspectiveMemory, EmotionalMemory, SemanticMemory } from "../types.js";
+import type { Memory } from "../types.js";
 
 export interface MemoryIndexer {
   sync(params?: {
@@ -58,7 +58,7 @@ export class MemoryIndexerImpl implements MemoryIndexer {
     // Sync all JSON memory files
     const memoryFiles = await glob("*.json", { cwd: memoryDir, absolute: false });
     for (const fileName of memoryFiles) {
-      const memories = this.loadMemoriesFromFile<BaseMemory>(fileName);
+      const memories = this.loadMemoriesFromFile<Memory>(fileName);
       if (memories.length > 0) {
         await this.syncMemoryFile(fileName, memories, params?.force);
       }
@@ -69,7 +69,7 @@ export class MemoryIndexerImpl implements MemoryIndexer {
     }
   }
 
-  private loadMemoriesFromFile<T extends BaseMemory>(fileName: string): T[] {
+  private loadMemoriesFromFile<T extends Memory>(fileName: string): T[] {
     const filePath = getWorkspaceMemoryFilePath(this.workspaceDir, fileName);
     if (!existsSync(filePath)) {
       return [];
@@ -93,7 +93,7 @@ export class MemoryIndexerImpl implements MemoryIndexer {
     }
   }
 
-  private async syncMemoryFile(fileName: string, memories: BaseMemory[], force?: boolean): Promise<void> {
+  private async syncMemoryFile(fileName: string, memories: Memory[], force?: boolean): Promise<void> {
     const relPath = `memory/${fileName}`;
     const absPath = getWorkspaceMemoryFilePath(this.workspaceDir, fileName);
 
@@ -144,7 +144,7 @@ export class MemoryIndexerImpl implements MemoryIndexer {
     }
   }
 
-  private insertChunks(path: string, memories: BaseMemory[], texts: string[], embeddings: number[][]): void {
+  private insertChunks(path: string, memories: Memory[], texts: string[], embeddings: number[][]): void {
     const insertChunk = this.db.prepare(`
       INSERT OR REPLACE INTO chunks 
       (id, path, source, start_line, end_line, hash, model, text, embedding, updated_at)
@@ -189,7 +189,7 @@ export class MemoryIndexerImpl implements MemoryIndexer {
     }
   }
 
-  private updateFileRecord(path: string, absPath: string, memories: BaseMemory[]): void {
+  private updateFileRecord(path: string, absPath: string, memories: Memory[]): void {
     const content = JSON.stringify(memories);
     const hash = createHash("sha256").update(content).digest("hex");
     const mtime = existsSync(absPath) ? statSync(absPath).mtimeMs : Date.now();
@@ -202,64 +202,9 @@ export class MemoryIndexerImpl implements MemoryIndexer {
   }
 
   /**
-   * Format a memory object as searchable text based on its type
+   * Format a memory object as searchable text
    */
-  private formatMemoryAsText(memory: BaseMemory): string {
-    switch (memory.type) {
-      case "semantic": {
-        const m = memory as SemanticMemory;
-        let text = m.fact;
-        if (m.category) {
-          text = `${m.category}: ${text}`;
-        }
-        if (m.source) {
-          text += ` (source: ${m.source})`;
-        }
-        return text;
-      }
-      case "episodic": {
-        const m = memory as EpisodicMemory;
-        let text = m.event;
-        if (m.context) {
-          const parts: string[] = [];
-          if (m.context.who) parts.push(`who: ${m.context.who}`);
-          if (m.context.what) parts.push(`what: ${m.context.what}`);
-          if (m.context.where) parts.push(`where: ${m.context.where}`);
-          if (m.context.why) parts.push(`why: ${m.context.why}`);
-          if (parts.length > 0) {
-            text += ` (${parts.join(", ")})`;
-          }
-        }
-        return text;
-      }
-      case "procedural": {
-        const m = memory as ProceduralMemory;
-        let text = `${m.pattern}: ${m.action}`;
-        if (m.trigger) {
-          text += ` (trigger: ${typeof m.trigger === "string" ? m.trigger : m.trigger.toString()})`;
-        }
-        if (m.successRate !== undefined) {
-          text += ` (success rate: ${(m.successRate * 100).toFixed(0)}%)`;
-        }
-        return text;
-      }
-      case "prospective": {
-        const m = memory as ProspectiveMemory;
-        let text = m.intention;
-        if (m.triggerContext) {
-          text += ` (trigger: ${m.triggerContext})`;
-        }
-        if (m.status) {
-          text += ` (status: ${m.status})`;
-        }
-        return text;
-      }
-      case "emotional": {
-        const m = memory as EmotionalMemory;
-        return `${m.tag.emotion} (${m.tag.intensity})${m.context ? `: ${m.context}` : ""}`;
-      }
-      default:
-        return JSON.stringify(memory);
-    }
+  private formatMemoryAsText(memory: Memory): string {
+    return memory.content;
   }
 }

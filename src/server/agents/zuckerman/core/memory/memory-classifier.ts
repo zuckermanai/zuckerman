@@ -32,20 +32,11 @@ export async function rememberMemoriesFromMessage(
     model,
     system: `You extract and categorize important information from messages into memory types:
 
-- semantic: Facts, knowledge, personal info (name, preferences, opinions, learnings). Long-term knowledge that persists.
-  Examples: "User's name is Alex", "Prefers dark mode", "Lives in New York", "Knows Python"
-
-- episodic: Specific events, experiences, decisions, happenings. Time-bound memories with context.
-  Examples: "Decided to start a new project yesterday", "Had a meeting with the team", "Completed the task"
-
-- procedural: Skills, patterns, habits, how-to knowledge. Actionable patterns and methods.
-  Examples: "How to use the API", "Preferred workflow for debugging", "Pattern for handling errors"
-
-- prospective: Future intentions, plans, reminders, things to do later.
-  Examples: "Will review the code tomorrow", "Plans to implement feature X", "Reminder to call back"
-
-- emotional: Emotionally significant experiences, feelings, emotional associations.
-  Examples: "Felt frustrated with the bug", "Excited about the new feature", "Concerned about deadline"
+- semantic: Facts, knowledge, personal info (name, preferences, opinions, learnings)
+- episodic: Specific events, experiences, decisions, happenings
+- procedural: Skills, patterns, habits, how-to knowledge
+- prospective: Future intentions, plans, reminders, things to do later
+- emotional: Emotionally significant experiences, feelings, emotional associations
 
 Guidelines:
 - Only extract information that is explicitly stated or clearly implied

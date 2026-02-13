@@ -161,9 +161,22 @@ function normalizeSources(
   return Array.from(normalized);
 }
 
+function normalizeOverlap(overlap: number, tokens: number): number {
+  return Math.max(0, Math.min(overlap, tokens - 1));
+}
+
+function normalizeWeights(vectorWeight: number, textWeight: number) {
+  const v = Math.max(0, Math.min(vectorWeight, 1));
+  const t = Math.max(0, Math.min(textWeight, 1));
+  const sum = v + t;
+  return {
+    vectorWeight: sum > 0 ? v / sum : DEFAULT_HYBRID_VECTOR_WEIGHT,
+    textWeight: sum > 0 ? t / sum : DEFAULT_HYBRID_TEXT_WEIGHT,
+  };
+}
+
 export function resolveMemorySearchConfig(
   config: MemorySearchConfig,
-  workspaceDir: string,
   agentId: string,
 ): ResolvedMemorySearchConfig | null {
   const enabled = config.enabled ?? true;
@@ -262,13 +275,9 @@ export function resolveMemorySearchConfig(
     maxEntries: config.cache?.maxEntries,
   };
 
-  const overlap = Math.max(0, Math.min(chunking.overlap, chunking.tokens - 1));
+  const overlap = normalizeOverlap(chunking.overlap, chunking.tokens);
   const minScore = Math.max(0, Math.min(query.minScore, 1));
-  const vectorWeight = Math.max(0, Math.min(hybrid.vectorWeight, 1));
-  const textWeight = Math.max(0, Math.min(hybrid.textWeight, 1));
-  const sum = vectorWeight + textWeight;
-  const normalizedVectorWeight = sum > 0 ? vectorWeight / sum : DEFAULT_HYBRID_VECTOR_WEIGHT;
-  const normalizedTextWeight = sum > 0 ? textWeight / sum : DEFAULT_HYBRID_TEXT_WEIGHT;
+  const { vectorWeight: normalizedVectorWeight, textWeight: normalizedTextWeight } = normalizeWeights(hybrid.vectorWeight, hybrid.textWeight);
   const candidateMultiplier = Math.max(1, Math.min(hybrid.candidateMultiplier, 20));
 
   return {

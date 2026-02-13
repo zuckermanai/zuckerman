@@ -1,88 +1,85 @@
 /**
- * Semantic Memory - Facts and knowledge
- * Stored in JSON file for easy parsing and retrieval
+ * Unified Memory Store
+ * Single store class that saves each memory type to its own file
  */
 
 import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { getAgentMemoryStorePath } from "@server/world/homedir/paths.js";
-import type { SemanticMemory } from "../types.js";
+import type { Memory, MemoryType } from "../types.js";
 
-export interface SemanticMemoryStorage {
-  memories: SemanticMemory[];
+export interface MemoryStorage {
+  memories: Memory[];
 }
 
-export class SemanticMemoryStore {
-  private memories = new Map<string, SemanticMemory>();
+export class MemoryStore {
+  private memories = new Map<string, Memory>();
   private storagePath: string;
+  private memoryType: MemoryType;
+  private agentId: string;
 
-  constructor(agentId: string) {
-    this.storagePath = getAgentMemoryStorePath(agentId, "semantic");
+  constructor(agentId: string, memoryType: MemoryType) {
+    this.agentId = agentId;
+    this.memoryType = memoryType;
+    this.storagePath = getAgentMemoryStorePath(agentId, memoryType);
     this.load();
   }
 
   /**
-   * Add semantic memory
+   * Add memory
    */
-  add(memory: Omit<SemanticMemory, "id" | "type" | "createdAt" | "updatedAt">): string {
+  add(memory: Omit<Memory, "id" | "type" | "createdAt" | "updatedAt">): string {
     const id = randomUUID();
     const now = Date.now();
 
-    console.log("adding semantic memory", memory);
-    
-    const semanticMemory: SemanticMemory = {
+    const mem: Memory = {
       id,
-      type: "semantic",
+      type: this.memoryType,
       createdAt: now,
       updatedAt: now,
       ...memory,
     };
 
-    this.memories.set(id, semanticMemory);
+    this.memories.set(id, mem);
     this.save();
     return id;
   }
 
   /**
-   * Get semantic memory by ID
+   * Get memory by ID
    */
-  get(id: string): SemanticMemory | null {
+  get(id: string): Memory | null {
     return this.memories.get(id) ?? null;
   }
 
   /**
-   * Get all semantic memories
+   * Get all memories
    */
-  getAll(): SemanticMemory[] {
+  getAll(): Memory[] {
     return Array.from(this.memories.values());
   }
 
   /**
-   * Query semantic memories
+   * Query memories
    */
   query(options?: {
     conversationId?: string;
-    category?: string;
-    query?: string;
+    types?: MemoryType[];
     limit?: number;
-  }): SemanticMemory[] {
+  }): Memory[] {
     let results = Array.from(this.memories.values());
 
-    // Filter by conversation ID
     if (options?.conversationId) {
       results = results.filter(m => m.conversationId === options.conversationId);
     }
 
-    // Filter by category
-    if (options?.category) {
-      results = results.filter(m => m.category === options.category);
+    if (options?.types && options.types.length > 0) {
+      results = results.filter(m => options.types!.includes(m.type));
     }
 
-    // Sort by recency (newest first)
     results.sort((a, b) => b.updatedAt - a.updatedAt);
 
-    // Apply limit
     if (options?.limit) {
       results = results.slice(0, options.limit);
     }
@@ -91,15 +88,15 @@ export class SemanticMemoryStore {
   }
 
   /**
-   * Update semantic memory
+   * Update memory
    */
-  update(id: string, updates: Partial<Omit<SemanticMemory, "id" | "type" | "createdAt">>): boolean {
+  update(id: string, updates: Partial<Omit<Memory, "id" | "createdAt">>): boolean {
     const memory = this.memories.get(id);
     if (!memory) {
       return false;
     }
 
-    const updated: SemanticMemory = {
+    const updated: Memory = {
       ...memory,
       ...updates,
       updatedAt: Date.now(),
@@ -111,7 +108,7 @@ export class SemanticMemoryStore {
   }
 
   /**
-   * Delete semantic memory
+   * Delete memory
    */
   delete(id: string): boolean {
     const deleted = this.memories.delete(id);
@@ -126,7 +123,6 @@ export class SemanticMemoryStore {
    */
   private load(): void {
     if (!existsSync(this.storagePath)) {
-      // Create directory if it doesn't exist
       const dir = dirname(this.storagePath);
       if (!existsSync(dir)) {
         mkdirSync(dir, { recursive: true });
@@ -140,49 +136,38 @@ export class SemanticMemoryStore {
         return;
       }
 
-      // Try to fix common JSON issues before parsing
       let cleanedContent = content.trim();
-      
-      // Remove trailing commas before closing brackets/braces
       cleanedContent = cleanedContent.replace(/,(\s*[}\]])/g, "$1");
       
-      // Try parsing
-      let data: SemanticMemoryStorage;
+      let data: MemoryStorage;
       try {
         data = JSON.parse(cleanedContent);
       } catch (parseError) {
-        // If parsing still fails, try to recover by extracting valid JSON structure
-        console.warn(`[SemanticMemoryStore] JSON parse failed, attempting recovery:`, parseError);
-        
-        // Try to extract just the memories array if the structure is broken
+        console.warn(`[MemoryStore] JSON parse failed, attempting recovery:`, parseError);
         const memoriesMatch = cleanedContent.match(/"memories"\s*:\s*\[([\s\S]*?)\]/);
         if (memoriesMatch) {
           try {
             const memoriesArray = JSON.parse(`[${memoriesMatch[1]}]`);
             data = { memories: memoriesArray };
           } catch {
-            // If recovery fails, start fresh
-            console.error(`[SemanticMemoryStore] Recovery failed, starting with empty store`);
+            console.error(`[MemoryStore] Recovery failed, starting with empty store`);
             return;
           }
         } else {
-          // No valid structure found, start fresh
-          console.error(`[SemanticMemoryStore] Invalid JSON structure, starting with empty store`);
+          console.error(`[MemoryStore] Invalid JSON structure, starting with empty store`);
           return;
         }
       }
       
-      // Validate and load memories
       if (Array.isArray(data.memories)) {
         for (const memory of data.memories) {
-          if (memory && typeof memory === "object" && memory.id && memory.type === "semantic") {
+          if (memory && typeof memory === "object" && memory.id && memory.content && memory.type === this.memoryType) {
             this.memories.set(memory.id, memory);
           }
         }
       }
     } catch (error) {
-      console.warn(`[SemanticMemoryStore] Failed to load memories from ${this.storagePath}:`, error);
-      // Don't throw - allow the store to start empty
+      console.warn(`[MemoryStore] Failed to load memories from ${this.storagePath}:`, error);
     }
   }
 
@@ -196,13 +181,13 @@ export class SemanticMemoryStore {
         mkdirSync(dir, { recursive: true });
       }
 
-      const data: SemanticMemoryStorage = {
+      const data: MemoryStorage = {
         memories: Array.from(this.memories.values()),
       };
 
       writeFileSync(this.storagePath, JSON.stringify(data, null, 2), "utf-8");
     } catch (error) {
-      console.error(`[SemanticMemoryStore] Failed to save memories to ${this.storagePath}:`, error);
+      console.error(`[MemoryStore] Failed to save memories to ${this.storagePath}:`, error);
     }
   }
 }
