@@ -112,13 +112,32 @@ export class Self {
   /**
    * Push error to working memory for future learning
    */
-  private async learnFromError(context: string, error: unknown): Promise<void> {
+  private async learnFromError(
+    context: string, 
+    error: unknown,
+    conversationId?: string,
+    runId?: string
+  ): Promise<void> {
     try {
       const workingMemory = this.memoryManager.getMemories({ type: "working", format: "content" }) as string[];
       const errorEntry = this.formatErrorForMemory(context, error);
       workingMemory.push(errorEntry);
       this.memoryManager.setAll("working", workingMemory);
       console.log(`[Self] Error logged to working memory: ${context}`);
+      
+      // Emit self.error event for activity tracking
+      if (conversationId && runId) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        const errorStack = error instanceof Error && error.stack ? error.stack : undefined;
+        await this.emit({
+          type: "self.error",
+          conversationId,
+          runId,
+          errorContext: context,
+          error: errorMessage,
+          errorStack,
+        }).catch(err => console.warn(`[Self] Failed to emit self.error event:`, err));
+      }
     } catch (memoryError) {
       console.error(`[Self] Failed to log error to working memory:`, memoryError);
     }
@@ -172,12 +191,16 @@ export class Self {
 
     console.log(`[Self] Self council started, working memory size: ${workingMemory.length}`);
     const runId = randomUUID();
-    const { action, conversationId, updatedMemories, brainPart: suggestedBrainPart } = await this.decideAction();
-    console.log(`[Self] Decided action: ${action} (runId: ${runId}, conversationId: ${conversationId || "(none)"})`);
+    let conversationId = "";
+    
+    try {
+      const { action, conversationId: actionConversationId, updatedMemories, brainPart: suggestedBrainPart } = await this.decideAction();
+      conversationId = actionConversationId || "";
+      console.log(`[Self] Decided action: ${action} (runId: ${runId}, conversationId: ${conversationId || "(none)"})`);
 
-    if (action === "think") {
-      // Update working memory with cleaned memories
-      this.memoryManager.setAll("working", updatedMemories || []);
+      if (action === "think") {
+        // Update working memory with cleaned memories
+        this.memoryManager.setAll("working", updatedMemories || []);
 
       // Use suggested brain part from council
       if (!suggestedBrainPart || suggestedBrainPart.trim() === "") {
@@ -196,37 +219,50 @@ export class Self {
       workingMemory.push(result);
       console.log(`[Self] Saving to memory (content length: ${result.length}), working memory size: ${workingMemory.length}`);
 
-      this.memoryManager.setAll("working", workingMemory);
-      console.log(`[Self] Brain part completed, saved to memory`);
-    } else if (action === "respond") {
-      // Generate response FIRST with current working memory (before cleanup)
-      console.log(`[Self] Generating response...`);
-      const response = await this.generateResponse(runId, conversationId);
-      console.log(`[Self] Response generated (length: ${response.length})`);
+        this.memoryManager.setAll("working", workingMemory);
+        console.log(`[Self] Brain part completed, saved to memory`);
+      } else if (action === "respond") {
+        // Generate response FIRST with current working memory (before cleanup)
+        console.log(`[Self] Generating response...`);
+        const response = await this.generateResponse(runId, conversationId);
+        console.log(`[Self] Response generated (length: ${response.length})`);
 
-      await this.emit({
-        type: "write",
-        conversationId,
-        content: response,
-        role: "assistant",
-        runId
-      });
-      const updatedMemoriesArray = updatedMemories || [];
+        // Emit response event for activity tracking
+        await this.emit({
+          type: "stream.response",
+          conversationId,
+          runId,
+          response,
+        });
 
-      updatedMemoriesArray.push(`responded to conversationId: ${conversationId} with response: ${response}`);
+        await this.emit({
+          type: "write",
+          conversationId,
+          content: response,
+          role: "assistant",
+          runId
+        });
+        const updatedMemoriesArray = updatedMemories || [];
 
-      // Update working memory AFTER response is generated and emitted
-      this.memoryManager.setAll("working", updatedMemoriesArray || []);
-      console.log(`[Self] Updated working memory (removed completed request)`);
+        updatedMemoriesArray.push(`responded to conversationId: ${conversationId} with response: ${response}`);
+
+        // Update working memory AFTER response is generated and emitted
+        this.memoryManager.setAll("working", updatedMemoriesArray || []);
+        console.log(`[Self] Updated working memory (removed completed request)`);
 
 
-    } else if (action === "sleep") {
-      this.memoryManager.setAll("working", updatedMemories || []);
+      } else if (action === "sleep") {
+        this.memoryManager.setAll("working", updatedMemories || []);
 
-      // Sleep - do nothing, just wait
-      const sleepTime = Math.random() * 4000 + 1000;
-      console.log(`[Self] Sleeping for ${Math.round(sleepTime)}ms`);
-      await new Promise(resolve => setTimeout(resolve, sleepTime));
+        // Sleep - do nothing, just wait
+        const sleepTime = Math.random() * 4000 + 1000;
+        console.log(`[Self] Sleeping for ${Math.round(sleepTime)}ms`);
+        await new Promise(resolve => setTimeout(resolve, sleepTime));
+      }
+    } catch (error) {
+      console.error(`[Self] Error in selfCouncil:`, error);
+      await this.learnFromError("selfCouncil", error, conversationId, runId);
+      throw error;
     }
   }
 
@@ -365,7 +401,7 @@ export class Self {
               continue;
             } catch (error) {
               console.error(`[Self] Error executing tool calls:`, error);
-              await this.learnFromError(`runBrainPart.toolExecution.${brainPart.id}`, error);
+              await this.learnFromError(`runBrainPart.toolExecution.${brainPart.id}`, error, "", runId);
               throw error;
             }
           }
@@ -380,7 +416,7 @@ export class Self {
           iterations++;
         } catch (error) {
           console.error(`[Self] Error in brain part iteration:`, error);
-          await this.learnFromError(`runBrainPart.iteration.${brainPart.id}`, error);
+          await this.learnFromError(`runBrainPart.iteration.${brainPart.id}`, error, "", runId);
           throw error;
         }
       }
@@ -388,7 +424,7 @@ export class Self {
       return finalContent;
     } catch (error) {
       console.error(`[Self] Error running brain part ${brainPart.name}:`, error);
-      await this.learnFromError(`runBrainPart.${brainPart.id}`, error);
+      await this.learnFromError(`runBrainPart.${brainPart.id}`, error, "", runId);
       throw error;
     }
   }

@@ -138,48 +138,9 @@ export function useApp(): UseAppReturn {
   const handleSidebarAction = useCallback(
     (action: string, data: any) => {
       switch (action) {
-        case "select-conversation":
-          setCurrentConversationId(data.conversationId);
-          addToActiveConversations(data.conversationId);
-          navigate("/");
-          break;
-        case "restore-conversation":
-          setCurrentConversationId(data.conversationId);
-          addToActiveConversations(data.conversationId);
-          navigate("/");
-          break;
-        case "archive-conversation":
-          removeFromActiveConversations(data.conversationId);
-          if (data.conversationId === currentConversationId) {
-            const remainingActive = Array.from(activeConversationIds).filter(
-              (id) => id !== data.conversationId
-            );
-            const nextActive = remainingActive.length > 0 ? remainingActive[0] : null;
-            setCurrentConversationId(nextActive);
-          }
-          break;
-        case "select-agent":
+          case "select-agent":
           setCurrentAgentId(data.agentId);
           navigate(`/agent/${data.agentId}`);
-          break;
-        case "new-conversation":
-          if (currentAgentId) {
-            createConversation("main", currentAgentId)
-              .then((newConversation) => {
-                // Add to active conversations
-                addToActiveConversations(newConversation.id);
-                // Navigate to home if needed
-                if (location.pathname !== "/") {
-                  navigate("/");
-                }
-              })
-              .catch((error) => {
-                console.error("Failed to create conversation:", error);
-                alert(`Failed to create conversation: ${error instanceof Error ? error.message : "Unknown error"}`);
-              });
-          } else {
-            alert("Please select an agent first");
-          }
           break;
         case "restart-onboarding":
           removeStorageItem("zuckerman:onboarding:completed");

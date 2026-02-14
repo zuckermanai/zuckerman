@@ -17,6 +17,9 @@ import type {
   StreamLifecycleEvent,
   StreamToolCallEvent,
   StreamToolResultEvent,
+  StreamResponseEvent,
+  SelfErrorEvent,
+  MessageEvent,
 } from "./core/self/events.js";
 import { activityRecorder } from "./activity/index.js";
 
@@ -98,6 +101,16 @@ export class AgentService implements AgentRuntime {
       // Could store in memory system
     });
 
+    this.runtime.on("message", async (event: MessageEvent) => {
+      const runId = event.runId || randomUUID();
+      await activityRecorder.recordAgentMessage(
+        this.agentId,
+        event.conversationId,
+        runId,
+        event.message
+      ).catch(err => console.warn(`[AgentService] Failed to record message:`, err));
+    });
+
     // Streaming events
     this.runtime.on("stream.token", async (event: StreamTokenEvent) => {
       // Handle token streaming if needed
@@ -156,7 +169,47 @@ export class AgentService implements AgentRuntime {
     });
 
     this.runtime.on("stream.tool.result", async (event: StreamToolResultEvent) => {
-      // Tool result events are handled
+      const toolResult = typeof event.toolResult === "string" 
+        ? event.toolResult 
+        : JSON.stringify(event.toolResult);
+      
+      // Check if result is an error
+      if (typeof event.toolResult === "string" && event.toolResult.startsWith("Error:")) {
+        await activityRecorder.recordToolError(
+          this.agentId,
+          event.conversationId,
+          event.runId,
+          event.tool,
+          toolResult
+        ).catch(err => console.warn(`[AgentService] Failed to record tool error:`, err));
+      } else {
+        await activityRecorder.recordToolResult(
+          this.agentId,
+          event.conversationId,
+          event.runId,
+          event.tool,
+          event.toolResult
+        ).catch(err => console.warn(`[AgentService] Failed to record tool result:`, err));
+      }
+    });
+
+    this.runtime.on("stream.response", async (event: StreamResponseEvent) => {
+      await activityRecorder.recordAgentResponse(
+        this.agentId,
+        event.conversationId,
+        event.runId,
+        event.response
+      ).catch(err => console.warn(`[AgentService] Failed to record response:`, err));
+    });
+
+    this.runtime.on("self.error", async (event: SelfErrorEvent) => {
+      await activityRecorder.recordSelfError(
+        this.agentId,
+        event.conversationId,
+        event.runId,
+        event.errorContext,
+        event.error
+      ).catch(err => console.warn(`[AgentService] Failed to record self error:`, err));
     });
   }
 

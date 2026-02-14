@@ -9,6 +9,7 @@ import { createChannelHandlers } from "./handlers/channels.js";
 import { createConfigHandlers } from "./handlers/config.js";
 import { createTextToSpeechHandlers } from "./handlers/text-to-speech.js";
 import { createActivityHandlers } from "./handlers/activities.js";
+import { createMemoryHandlers } from "./handlers/memory.js";
 
 export interface CoreHandlersDeps {
   agentFactory: AgentRuntimeFactory;
@@ -29,6 +30,7 @@ export function createCoreHandlers(deps: CoreHandlersDeps): GatewayRequestHandle
   const configHandlers = createConfigHandlers();
   const textToSpeechHandlers = createTextToSpeechHandlers();
   const activityHandlers = createActivityHandlers();
+  const memoryHandlers = createMemoryHandlers(agentFactory);
 
   // Combine all handlers, filtering out undefined values
   const handlers: GatewayRequestHandlers = {};
@@ -66,6 +68,10 @@ export function createCoreHandlers(deps: CoreHandlersDeps): GatewayRequestHandle
   }
 
   for (const [key, handler] of Object.entries(activityHandlers)) {
+    if (handler) handlers[key] = handler;
+  }
+
+  for (const [key, handler] of Object.entries(memoryHandlers)) {
     if (handler) handlers[key] = handler;
   }
 

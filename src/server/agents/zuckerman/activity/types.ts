@@ -2,8 +2,12 @@ export type ActivityType =
   | "agent.run"
   | "agent.run.complete"
   | "agent.run.error"
+  | "agent.message"
+  | "agent.response"
   | "tool.call"
   | "tool.result"
+  | "tool.error"
+  | "self.error"
   | "conversation.create"
   | "conversation.update"
   | "channel.message.incoming"
@@ -34,6 +38,11 @@ export interface Activity {
     toolArgs?: Record<string, unknown>;
     toolResult?: unknown;
     toolError?: string;
+    
+    // Self error activities
+    errorContext?: string;
+    errorMessage?: string;
+    errorStack?: string;
     
     // Conversation activities
     conversationType?: string;

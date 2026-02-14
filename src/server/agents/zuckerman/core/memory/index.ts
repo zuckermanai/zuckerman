@@ -12,6 +12,7 @@ export * from "./memory-service.js"; // Memory Service
 
 // Memory Remembering (Real-time)
 export * from "./memory-classifier.js";
+export * from "./memory-events.js";
 
 // Services: Encoding, Storage, Retrieval
 export * from "./retrieval/encoding/schema.js"; // Database schema

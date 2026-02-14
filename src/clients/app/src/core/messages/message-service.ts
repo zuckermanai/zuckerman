@@ -23,7 +23,7 @@ export class MessageService {
     const conversationState = await this.conversationService.getConversation(conversationId);
     const backendMessages = conversationState.messages || [];
 
-    const transformed = this.transformMessages(backendMessages);
+    const transformed = this.transformMessages(backendMessages, conversationId);
 
     return transformed;
   }
@@ -31,11 +31,12 @@ export class MessageService {
   /**
    * Transform backend messages to UI messages
    */
-  transformMessages(backendMessages: BackendMessage[]): Message[] {
+  transformMessages(backendMessages: BackendMessage[], conversationId?: string): Message[] {
     return backendMessages.map((msg) => ({
       role: msg.role as "user" | "assistant" | "system" | "tool",
       content: msg.content,
       timestamp: msg.timestamp || Date.now(),
+      conversationId,
       rawResponse: undefined,
       toolCalls: msg.toolCalls as Array<{
         id: string;

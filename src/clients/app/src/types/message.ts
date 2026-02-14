@@ -2,6 +2,7 @@ export interface Message {
   role: "user" | "assistant" | "system" | "thinking" | "tool";
   content: string;
   timestamp: number;
+  conversationId?: string; // Conversation ID this message belongs to
   rawResponse?: unknown; // Store raw JSON response for viewing
   toolCalls?: Array<{
     id: string;

@@ -75,6 +75,22 @@ export interface StreamToolResultEvent {
   toolResult: unknown;
 }
 
+export interface StreamResponseEvent {
+  type: "stream.response";
+  conversationId: string;
+  runId: string;
+  response: string;
+}
+
+export interface SelfErrorEvent {
+  type: "self.error";
+  conversationId: string;
+  runId: string;
+  errorContext: string;
+  error: string;
+  errorStack?: string;
+}
+
 export interface MessageEvent {
   type: "message";
   conversationId: string;
@@ -93,4 +109,6 @@ export type AgentEvent =
   | StreamTokenEvent
   | StreamLifecycleEvent
   | StreamToolCallEvent
-  | StreamToolResultEvent;
+  | StreamToolResultEvent
+  | StreamResponseEvent
+  | SelfErrorEvent;

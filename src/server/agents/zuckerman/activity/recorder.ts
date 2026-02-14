@@ -142,9 +142,69 @@ class ActivityRecorder {
     toolName: string,
     error: string,
   ): Promise<void> {
-    await this.record("tool.result", {
+    await this.record("tool.error", {
       toolName,
       toolError: error,
+    }, {
+      agentId,
+      conversationId,
+      runId,
+    });
+  }
+  
+  /**
+   * Record agent message
+   */
+  async recordAgentMessage(
+    agentId: string,
+    conversationId: string,
+    runId: string,
+    message: string,
+  ): Promise<void> {
+    await this.record("agent.message", {
+      message,
+    }, {
+      agentId,
+      conversationId,
+      runId,
+    });
+  }
+  
+  /**
+   * Record agent response
+   */
+  async recordAgentResponse(
+    agentId: string,
+    conversationId: string,
+    runId: string,
+    response: string,
+  ): Promise<void> {
+    await this.record("agent.response", {
+      response,
+    }, {
+      agentId,
+      conversationId,
+      runId,
+    });
+  }
+  
+  /**
+   * Record self error
+   */
+  async recordSelfError(
+    agentId: string,
+    conversationId: string,
+    runId: string,
+    errorContext: string,
+    error: unknown,
+  ): Promise<void> {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    const errorStack = error instanceof Error && error.stack ? error.stack : undefined;
+    
+    await this.record("self.error", {
+      errorContext,
+      errorMessage,
+      errorStack,
     }, {
       agentId,
       conversationId,

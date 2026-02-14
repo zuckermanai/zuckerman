@@ -7,7 +7,6 @@ import { SidebarProvider, SidebarInset } from "./components/ui/sidebar";
 import { TitleBar } from "./components/layout/title-bar";
 import { OnboardingFlow } from "./features/onboarding/onboarding-flow";
 import { ConnectionError } from "./features/gateway/connection-error";
-import { HomePage } from "./features/home/home-page";
 import { SettingsPage } from "./features/home/settings/settings-page";
 import { InspectorPage } from "./features/home/inspector-page";
 import { AgentPage } from "./features/home/agent/agent-page";
@@ -50,19 +49,20 @@ function AppRoutes({ app, navigate, location, showConnectionError }: {
   showConnectionError: boolean;
 }) {
 
-  // Redirect to agent page by default when agent is selected and on home page
-  // But only if there's no current conversation (user hasn't explicitly selected a conversation)
+  // Redirect to agent page by default when agent is selected
   useEffect(() => {
     if (
       !showConnectionError &&
       !app.showOnboarding &&
       app.currentAgentId &&
-      location.pathname === "/" &&
-      !app.currentConversationId
+      !location.pathname.startsWith("/agent/") &&
+      location.pathname !== "/settings" &&
+      location.pathname !== "/inspector" &&
+      location.pathname !== "/calendar"
     ) {
-      navigate(`/agent/${app.currentAgentId}`);
+      navigate(`/agent/${app.currentAgentId}`, { replace: true });
     }
-  }, [app.currentAgentId, app.currentConversationId, location.pathname, navigate, showConnectionError, app.showOnboarding]);
+  }, [app.currentAgentId, location.pathname, navigate, showConnectionError, app.showOnboarding]);
 
   if (app.showOnboarding) {
     return (
@@ -92,17 +92,31 @@ function AppRoutes({ app, navigate, location, showConnectionError }: {
       {showConnectionError ? (
         <ConnectionError onRetry={app.handleRetryConnection} />
       ) : (
-        <SidebarProvider>
+        <SidebarProvider className="flex-1 min-h-0 overflow-hidden">
           <AppSidebar
             state={app}
             activeConversationIds={app.activeConversationIds}
             onAction={app.handleSidebarAction}
           />
-          <SidebarInset className="flex flex-col overflow-hidden" style={{ minWidth: 0, minHeight: 0 }}>
+          <SidebarInset className="flex flex-col min-h-0 overflow-hidden">
             <Routes>
               <Route
                 path="/"
-                element={<HomePage state={app} onMainContentAction={app.handleMainContentAction} />}
+                element={
+                  app.currentAgentId ? (
+                    <AgentPage
+                      state={app}
+                      gatewayClient={app.gatewayClient}
+                      onClose={() => navigate("/")}
+                    />
+                  ) : (
+                    <div className="flex items-center justify-center h-full">
+                      <div className="text-center">
+                        <p className="text-muted-foreground">Select an agent to get started</p>
+                      </div>
+                    </div>
+                  )
+                }
               />
               <Route 
                 path="/settings" 

@@ -354,6 +354,7 @@ export function useChat(
                 role: "thinking",
                 content: "",
                 timestamp: Date.now(),
+                conversationId: currentConversationIdRef.current || undefined,
               };
               newMessages.push(thinkingMessage);
             }
@@ -404,6 +405,7 @@ export function useChat(
               role: "assistant",
               content: token,
               timestamp: Date.now(),
+              conversationId: currentConversationIdRef.current || undefined,
               streamingRunId: runId,
             } as Message & { streamingRunId?: string });
           } else {
@@ -448,6 +450,7 @@ export function useChat(
             role: "assistant",
             content: "",
             timestamp: Date.now(),
+            conversationId: currentConversationIdRef.current || undefined,
             toolCalls: [{
               id: toolCallId,
               name: toolName,
@@ -507,6 +510,7 @@ export function useChat(
               role: "tool",
               content: resultContent,
               timestamp: Date.now(),
+              conversationId: currentConversationIdRef.current || undefined,
               toolCallId: toolCallId, // TypeScript now knows this is string
             };
             
@@ -586,6 +590,7 @@ export function useChat(
         role: "user",
         content: messageText,
         timestamp: userMessageTimestamp,
+        conversationId: currentConversationId,
       };
       setMessages((prev) => [...prev, userMessage]);
 
@@ -593,6 +598,7 @@ export function useChat(
         role: "thinking",
         content: "",
         timestamp: Date.now(),
+        conversationId: currentConversationId,
       };
       setMessages((prev) => [...prev, thinkingMessage]);
 

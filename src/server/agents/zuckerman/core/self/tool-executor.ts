@@ -60,7 +60,7 @@ export class ToolExecutor {
         
         const tool = availableTools[toolCall.toolName];
         if (!tool?.execute) {
-          const error = `Tool "${toolCall.toolName}" not found or has no execute function`;
+          const error = `Error: Tool "${toolCall.toolName}" not found or has no execute function`;
           await this.emitEvent({
             type: "stream.tool.result",
             conversationId,
