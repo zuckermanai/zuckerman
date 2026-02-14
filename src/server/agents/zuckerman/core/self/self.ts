@@ -176,9 +176,7 @@ export class Self {
 
     if (action === "think") {
       // Update working memory with cleaned memories
-      if (updatedMemories) {
-        this.memoryManager.setWorkingMemory(updatedMemories);
-      }
+      this.memoryManager.setWorkingMemory(updatedMemories || []);
 
       // Use suggested brain part from council
       if (!suggestedBrainPart || suggestedBrainPart.trim() === "") {
@@ -212,14 +210,18 @@ export class Self {
         role: "assistant",
         runId
       });
+      const updatedMemoriesArray = updatedMemories || [];
+
+      updatedMemoriesArray.push(`responded to conversationId: ${conversationId} with response: ${response}`);
 
       // Update working memory AFTER response is generated and emitted
-      if (updatedMemories) {
-        this.memoryManager.setWorkingMemory(updatedMemories);
-        console.log(`[Self] Updated working memory (removed completed request)`);
-      }
+      this.memoryManager.setWorkingMemory(updatedMemoriesArray || []);
+      console.log(`[Self] Updated working memory (removed completed request)`);
+
 
     } else if (action === "sleep") {
+      this.memoryManager.setWorkingMemory(updatedMemories || []);
+
       // Sleep - do nothing, just wait
       const sleepTime = Math.random() * 4000 + 1000;
       console.log(`[Self] Sleeping for ${Math.round(sleepTime)}ms`);
