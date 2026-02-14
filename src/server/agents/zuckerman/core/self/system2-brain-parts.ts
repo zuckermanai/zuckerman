@@ -271,6 +271,17 @@ export function getBrainPart(id: string): BrainPart | undefined {
   return SYSTEM2_BRAIN_PARTS.find((part) => part.id === id);
 }
 
+export function getCommunicationPrompt(workingMemory: string[]): string {
+  const memoryText = formatMemoryText(workingMemory, "Working Memory");
+  return `${getCommonContext()}
+
+You ARE Zuckerman. You are communicating through your Communication Module - this is how you generate responses and communicate with users based on your working memory.
+
+${memoryText}
+
+Generate a clear, helpful response based on your working memory. Use tools if needed to gather additional information or perform actions.`;
+}
+
 export function selfCouncilPrompt(workingMemory: string[]): string {
   const workingMemoryText = workingMemory.length > 0
     ? workingMemory.map((m, i) => `${i + 1}. ${m}`).join("\n")

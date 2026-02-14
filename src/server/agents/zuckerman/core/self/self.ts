@@ -13,12 +13,8 @@ import { ToolRegistry } from "@server/agents/zuckerman/tools/registry.js";
 import { IdentityLoader } from "../identity/identity-loader.js";
 import { agentDiscovery } from "@server/agents/discovery.js";
 import { ToolExecutor } from "./tool-executor.js";
-import { SYSTEM2_BRAIN_PARTS, getBrainPart, selfCouncilPrompt } from "./system2-brain-parts.js";
-import type { BrainPart } from "./types.js";
-
-export type EventHandler<T extends AgentEvent = AgentEvent> = (event: T) => void | Promise<void>;
-
-type Action = "respond" | "sleep" | "think";
+import { SYSTEM2_BRAIN_PARTS, getBrainPart, selfCouncilPrompt, getCommunicationPrompt } from "./system2-brain-parts.js";
+import type { BrainPart, EventHandler, Action } from "./types.js";
 
 export class Self {
   readonly agentId: string;
@@ -103,6 +99,31 @@ export class Self {
   }
 
   /**
+   * Format error for storage in working memory
+   */
+  private formatErrorForMemory(context: string, error: unknown): string {
+    const timestamp = new Date().toISOString();
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    const errorStack = error instanceof Error && error.stack ? ` | stack: ${error.stack}` : "";
+    return `[ERROR] ${context}: ${errorMessage}${errorStack} | timestamp: ${timestamp}`;
+  }
+
+  /**
+   * Push error to working memory for future learning
+   */
+  private async learnFromError(context: string, error: unknown): Promise<void> {
+    try {
+      const workingMemory = this.memoryManager.getWorkingMemory();
+      const errorEntry = this.formatErrorForMemory(context, error);
+      workingMemory.push(errorEntry);
+      this.memoryManager.setWorkingMemory(workingMemory);
+      console.log(`[Self] Error logged to working memory: ${context}`);
+    } catch (memoryError) {
+      console.error(`[Self] Failed to log error to working memory:`, memoryError);
+    }
+  }
+
+  /**
    * Background processing loop that runs continuously on working memory
    */
   private async processLoop(): Promise<void> {
@@ -122,12 +143,14 @@ export class Self {
           await this.selfCouncil();
         } catch (error) {
           console.error(`[Self] Error processing working memory:`, error);
+          await this.learnFromError("selfCouncil", error);
         }
 
         // Small delay between iterations
         await new Promise(resolve => setTimeout(resolve, 1000));
       } catch (error) {
         console.error(`[Self] Error in processing loop:`, error);
+        await this.learnFromError("processLoop", error);
         await new Promise(resolve => setTimeout(resolve, 1000));
       }
     }
@@ -157,25 +180,25 @@ export class Self {
         this.memoryManager.setWorkingMemory(updatedMemories);
       }
 
-      // Use suggested brain part if provided, otherwise select one
-      let brainPart = suggestedBrainPart ? getBrainPart(suggestedBrainPart) : null;
+      // Use suggested brain part from council
+      if (!suggestedBrainPart || suggestedBrainPart.trim() === "") {
+        throw new Error(`Council decided to "think" but did not provide a brainPart. Available brain parts: ${SYSTEM2_BRAIN_PARTS.map(bp => bp.id).join(", ")}`);
+      }
+      
+      const brainPart = getBrainPart(suggestedBrainPart);
       if (!brainPart) {
-        brainPart = await this.selectBrainPart();
+        throw new Error(`Council provided invalid brainPart: "${suggestedBrainPart}". Available brain parts: ${SYSTEM2_BRAIN_PARTS.map(bp => bp.id).join(", ")}`);
       }
-      if (brainPart) {
-        console.log(`[Self] Selected brain part: ${brainPart.name}`);
-        const result = await this.runBrainPart(brainPart, runId);
+      
+      console.log(`[Self] Selected brain part: ${brainPart.name}`);
+      const result = await this.runBrainPart(brainPart, runId);
 
-        const workingMemory = this.memoryManager.getWorkingMemory();
-        workingMemory.push(result);
-        console.log(`[Self] Saving to memory (content length: ${result.length}), working memory size: ${workingMemory.length}`);
+      const workingMemory = this.memoryManager.getWorkingMemory();
+      workingMemory.push(result);
+      console.log(`[Self] Saving to memory (content length: ${result.length}), working memory size: ${workingMemory.length}`);
 
-        this.memoryManager.setWorkingMemory(workingMemory);
-        await this.memoryManager.onNewMessage(result);
-        console.log(`[Self] Brain part completed, saved to memory`);
-      } else {
-        console.log(`[Self] No brain part selected`);
-      }
+      this.memoryManager.setWorkingMemory(workingMemory);
+      console.log(`[Self] Brain part completed, saved to memory`);
     } else if (action === "respond") {
       // Generate response FIRST with current working memory (before cleanup)
       console.log(`[Self] Generating response...`);
@@ -268,6 +291,9 @@ export class Self {
     } else if (output.think?.needed) {
       action = "think";
       brainPart = output.think.brainPart || undefined;
+      if (!brainPart || brainPart.trim() === "") {
+        throw new Error(`Council decided to "think" but did not provide a brainPart. Available brain parts: ${SYSTEM2_BRAIN_PARTS.map(bp => bp.id).join(", ")}`);
+      }
     }
 
     // Don't update working memory here - return it so it can be updated AFTER response is generated
@@ -279,121 +305,102 @@ export class Self {
     };
   }
 
-  private async selectBrainPart(): Promise<BrainPart | null> {
-    const workingMemory = this.memoryManager.getWorkingMemory();
-    console.log(`[Self] Selecting brain part from ${SYSTEM2_BRAIN_PARTS.length} available parts`);
-    const brainPartList = SYSTEM2_BRAIN_PARTS.map(bp => `- ${bp.id}: ${bp.name}`).join("\n");
-    const workingMemoryText = workingMemory.map((m, i) => `${i + 1}. ${m}`).join("\n");
-
-    const prompt = `You ARE Zuckerman. You are Self - selecting which brain part to use next.
-
-Working memory:
-${workingMemoryText}
-
-Available brain parts:
-${brainPartList}
-
-Which brain part should be used next?`;
-
-    const selectBrainPartSchema = z.object({
-      brainPartId: z.string(),
-    });
-
-    const result = await generateText({
-      model: this.llmModel,
-      system: this.systemPrompt,
-      messages: [
-        { role: "user" as const, content: prompt },
-      ],
-      output: Output.object({ schema: selectBrainPartSchema }),
-    });
-
-    const selectedId = result.output.brainPartId.trim().toLowerCase();
-    const brainPart = getBrainPart(selectedId) ?? null;
-    console.log(`[Self] Selected brain part ID: ${selectedId}, found: ${brainPart ? brainPart.name : 'null'}`);
-    return brainPart;
-  }
-
   private async runBrainPart(
     brainPart: BrainPart,
     runId: string
   ): Promise<string> {
     console.log(`[Self] Running brain part: ${brainPart.name} (runId: ${runId})`);
 
-    const workingMemory = this.memoryManager.getWorkingMemory();
-    const prompt = brainPart.getPrompt(workingMemory);
+    try {
+      const workingMemory = this.memoryManager.getWorkingMemory();
+      const prompt = brainPart.getPrompt(workingMemory);
 
-    const initialUserMessage: ModelMessage = { role: "user" as const, content: prompt };
-    const tools = brainPart.toolsAllowed !== false ? this.availableTools : undefined;
-    const maxIterations = brainPart.maxIterations ?? 10;
-    console.log(`[Self] Brain part config - maxIterations: ${maxIterations}, toolsAllowed: ${brainPart.toolsAllowed !== false}`);
+      const initialUserMessage: ModelMessage = { role: "user" as const, content: prompt };
+      const tools = brainPart.toolsAllowed !== false ? this.availableTools : undefined;
+      const maxIterations = brainPart.maxIterations ?? 10;
+      console.log(`[Self] Brain part config - maxIterations: ${maxIterations}, toolsAllowed: ${brainPart.toolsAllowed !== false}`);
 
-    let iterations = 0;
-    let messagesHistory: ModelMessage[] = [initialUserMessage];
-    let finalContent = "";
+      let iterations = 0;
+      let messagesHistory: ModelMessage[] = [initialUserMessage];
+      let finalContent = "";
 
-    while (iterations < maxIterations) {
-      console.log(`[Self] Brain part iteration ${iterations + 1}/${maxIterations}`);
-      const streamResult = await streamText({
-        model: this.llmModel,
-        system: this.systemPrompt,
-        messages: messagesHistory,
-        tools: tools,
-      });
+      while (iterations < maxIterations) {
+        try {
+          console.log(`[Self] Brain part iteration ${iterations + 1}/${maxIterations}`);
+          const streamResult = await streamText({
+            model: this.llmModel,
+            system: this.systemPrompt,
+            messages: messagesHistory,
+            tools: tools,
+          });
 
-      let content = "";
-      for await (const chunk of streamResult.textStream) {
-        content += chunk;
-        await this.emit({
-          type: "stream.token",
-          conversationId: "",
-          runId,
-          token: chunk,
-        });
+          let content = "";
+          for await (const chunk of streamResult.textStream) {
+            content += chunk;
+            await this.emit({
+              type: "stream.token",
+              conversationId: "",
+              runId,
+              token: chunk,
+            });
+          }
+
+          const toolCalls = await streamResult.toolCalls;
+
+          if (toolCalls?.length) {
+            try {
+              console.log(`[Self] Executing ${toolCalls.length} tool call(s)`);
+              const { assistantMsg, toolResultMsgs } = await this.toolExecutor.executeToolCalls(
+                toolCalls,
+                content,
+                this.availableTools,
+                messagesHistory,
+                "",
+                runId
+              );
+              messagesHistory.push(assistantMsg, ...toolResultMsgs);
+              iterations++;
+              continue;
+            } catch (error) {
+              console.error(`[Self] Error executing tool calls:`, error);
+              await this.learnFromError(`runBrainPart.toolExecution.${brainPart.id}`, error);
+              throw error;
+            }
+          }
+
+          if (content.trim().length > 0) {
+            messagesHistory.push({ role: "assistant" as const, content });
+            finalContent = content;
+            console.log(`[Self] Brain part completed with content (length: ${content.length})`);
+            break;
+          }
+
+          iterations++;
+        } catch (error) {
+          console.error(`[Self] Error in brain part iteration:`, error);
+          await this.learnFromError(`runBrainPart.iteration.${brainPart.id}`, error);
+          throw error;
+        }
       }
 
-      const toolCalls = await streamResult.toolCalls;
-
-      if (toolCalls?.length) {
-        console.log(`[Self] Executing ${toolCalls.length} tool call(s)`);
-        const { assistantMsg, toolResultMsgs } = await this.toolExecutor.executeToolCalls(
-          toolCalls,
-          content,
-          this.availableTools,
-          messagesHistory,
-          "",
-          runId
-        );
-        messagesHistory.push(assistantMsg, ...toolResultMsgs);
-        iterations++;
-        continue;
+      if (iterations >= maxIterations) {
+        console.log(`[Self] Brain part reached max iterations (${maxIterations})`);
       }
 
-      if (content.trim().length > 0) {
-        messagesHistory.push({ role: "assistant" as const, content });
-        finalContent = content;
-        console.log(`[Self] Brain part completed with content (length: ${content.length})`);
-        break;
-      }
-
-      iterations++;
+      return finalContent;
+    } catch (error) {
+      console.error(`[Self] Error running brain part ${brainPart.name}:`, error);
+      await this.learnFromError(`runBrainPart.${brainPart.id}`, error);
+      throw error;
     }
-
-    if (iterations >= maxIterations) {
-      console.log(`[Self] Brain part reached max iterations (${maxIterations})`);
-    }
-
-    return finalContent;
   }
 
   private async generateResponse(runId: string, conversationId: string = ""): Promise<string> {
     const workingMemory = this.memoryManager.getWorkingMemory();
     console.log(`[Self] Generating response (runId: ${runId}, conversationId: ${conversationId}), working memory size: ${workingMemory.length}`);
-    const workingMemoryText = workingMemory.length > 0
-      ? `\n\n## Working Memory\n${workingMemory.map((m, i) => `${i + 1}. ${m}`).join("\n")}`
-      : "";
-
-    const systemContent = `${this.systemPrompt}${workingMemoryText}`.trim();
+    
+    const communicationPrompt = getCommunicationPrompt(workingMemory);
+    const systemContent = `${this.systemPrompt}\n\n${communicationPrompt}`.trim();
     const messages: ModelMessage[] = [
       { role: "user" as const, content: "Generate response based on working memory." },
     ];
@@ -416,6 +423,7 @@ Which brain part should be used next?`;
       });
     }
 
+    
     const toolCalls = await streamResult.toolCalls;
     if (toolCalls?.length) {
       console.log(`[Self] Response generation executing ${toolCalls.length} tool call(s)`);
