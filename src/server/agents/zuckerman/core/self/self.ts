@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { AgentRunParams, AgentRunResult } from "@server/world/runtime/agents/types.js";
 import { loadConfig } from "@server/world/config/index.js";
 import { resolveAgentHomedir } from "@server/world/homedir/resolver.js";
-import { UnifiedMemoryManager } from "@server/agents/zuckerman/core/memory/manager.js";
+import { MemorySystem } from "@server/agents/zuckerman/core/memory/memory-service.js";
 import { resolveMemorySearchConfig } from "@server/agents/zuckerman/core/memory/config.js";
 import type { AgentEvent, MessageEvent } from "./events.js";
 import { streamText, generateText, Output } from "ai";
@@ -18,7 +18,7 @@ import type { BrainPart, EventHandler, Action } from "./types.js";
 
 export class Self {
   readonly agentId: string;
-  private memoryManager!: UnifiedMemoryManager;
+  private memoryManager!: MemorySystem;
   private eventHandlers: Map<string, Set<EventHandler>> = new Map();
   private toolExecutor: ToolExecutor;
   private llmModel!: LanguageModel;
@@ -39,7 +39,7 @@ export class Self {
       console.log(`[Self] Received message event`);
 
       // Get current working memory
-      const workingMemory = this.memoryManager.getWorkingMemory();
+      const workingMemory = this.memoryManager.getMemories({ type: "working", format: "content" }) as string[];
       console.log(`[Self] Current working memory size: ${workingMemory.length}`);
 
       // Add message to working memory
@@ -47,8 +47,9 @@ export class Self {
       console.log(`[Self] Added message to working memory: ${message.substring(0, 50)}...`);
 
       // Save updated working memory
-      this.memoryManager.setWorkingMemory(workingMemory);
-      await this.memoryManager.onNewMessage(message);
+      this.memoryManager.setAll("working", workingMemory, {
+        conversationId: event.conversationId,
+      });
 
       console.log(`[Self] Message processed, working memory size: ${workingMemory.length}`);
     });
@@ -58,7 +59,7 @@ export class Self {
     console.log(`[Self] Initializing agent ${this.agentId}`);
     const config = await loadConfig();
     const homedir = resolveAgentHomedir(config, this.agentId);
-    this.memoryManager = UnifiedMemoryManager.create(homedir, this.agentId);
+    this.memoryManager = new MemorySystem(homedir, this.agentId);
     console.log(`[Self] Memory manager created`);
 
     const memorySearchConfig = config.agent?.memorySearch;
@@ -113,10 +114,10 @@ export class Self {
    */
   private async learnFromError(context: string, error: unknown): Promise<void> {
     try {
-      const workingMemory = this.memoryManager.getWorkingMemory();
+      const workingMemory = this.memoryManager.getMemories({ type: "working", format: "content" }) as string[];
       const errorEntry = this.formatErrorForMemory(context, error);
       workingMemory.push(errorEntry);
-      this.memoryManager.setWorkingMemory(workingMemory);
+      this.memoryManager.setAll("working", workingMemory);
       console.log(`[Self] Error logged to working memory: ${context}`);
     } catch (memoryError) {
       console.error(`[Self] Failed to log error to working memory:`, memoryError);
@@ -161,7 +162,7 @@ export class Self {
    * Process working memory
    */
   private async selfCouncil(): Promise<void> {
-    const workingMemory = this.memoryManager.getWorkingMemory();
+    const workingMemory = this.memoryManager.getMemories({ type: "working", format: "content" }) as string[];
 
     // Skip if no working memory
     if (workingMemory.length === 0) {
@@ -176,7 +177,7 @@ export class Self {
 
     if (action === "think") {
       // Update working memory with cleaned memories
-      this.memoryManager.setWorkingMemory(updatedMemories || []);
+      this.memoryManager.setAll("working", updatedMemories || []);
 
       // Use suggested brain part from council
       if (!suggestedBrainPart || suggestedBrainPart.trim() === "") {
@@ -191,11 +192,11 @@ export class Self {
       console.log(`[Self] Selected brain part: ${brainPart.name}`);
       const result = await this.runBrainPart(brainPart, runId);
 
-      const workingMemory = this.memoryManager.getWorkingMemory();
+      const workingMemory = this.memoryManager.getMemories({ type: "working", format: "content" }) as string[];
       workingMemory.push(result);
       console.log(`[Self] Saving to memory (content length: ${result.length}), working memory size: ${workingMemory.length}`);
 
-      this.memoryManager.setWorkingMemory(workingMemory);
+      this.memoryManager.setAll("working", workingMemory);
       console.log(`[Self] Brain part completed, saved to memory`);
     } else if (action === "respond") {
       // Generate response FIRST with current working memory (before cleanup)
@@ -215,12 +216,12 @@ export class Self {
       updatedMemoriesArray.push(`responded to conversationId: ${conversationId} with response: ${response}`);
 
       // Update working memory AFTER response is generated and emitted
-      this.memoryManager.setWorkingMemory(updatedMemoriesArray || []);
+      this.memoryManager.setAll("working", updatedMemoriesArray || []);
       console.log(`[Self] Updated working memory (removed completed request)`);
 
 
     } else if (action === "sleep") {
-      this.memoryManager.setWorkingMemory(updatedMemories || []);
+      this.memoryManager.setAll("working", updatedMemories || []);
 
       // Sleep - do nothing, just wait
       const sleepTime = Math.random() * 4000 + 1000;
@@ -253,7 +254,7 @@ export class Self {
   // ============================================================================
 
   private async decideAction(): Promise<{ action: Action; conversationId: string; updatedMemories?: string[]; brainPart?: string }> {
-    const workingMemory = this.memoryManager.getWorkingMemory();
+    const workingMemory = this.memoryManager.getMemories({ type: "working", format: "content" }) as string[];
     console.log(`[Self] Deciding action with ${workingMemory.length} working memory items`);
     const prompt = selfCouncilPrompt(workingMemory);
 
@@ -314,7 +315,7 @@ export class Self {
     console.log(`[Self] Running brain part: ${brainPart.name} (runId: ${runId})`);
 
     try {
-      const workingMemory = this.memoryManager.getWorkingMemory();
+      const workingMemory = this.memoryManager.getMemories({ type: "working", format: "content" }) as string[];
       const prompt = brainPart.getPrompt(workingMemory);
 
       const initialUserMessage: ModelMessage = { role: "user" as const, content: prompt };
@@ -393,7 +394,7 @@ export class Self {
   }
 
   private async generateResponse(runId: string, conversationId: string = ""): Promise<string> {
-    const workingMemory = this.memoryManager.getWorkingMemory();
+    const workingMemory = this.memoryManager.getMemories({ type: "working", format: "content" }) as string[];
     console.log(`[Self] Generating response (runId: ${runId}, conversationId: ${conversationId}), working memory size: ${workingMemory.length}`);
     
     const communicationPrompt = getCommunicationPrompt(workingMemory);

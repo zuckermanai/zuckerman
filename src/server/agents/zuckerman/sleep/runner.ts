@@ -3,7 +3,8 @@ import { deriveConversationKey } from "../conversations/manager.js";
 import { loadConversationStore } from "../conversations/store.js";
 import type { ConversationEntry } from "../conversations/types.js";
 import type { ZuckermanConfig } from "@server/world/config/types.js";
-import { UnifiedMemoryManager } from "../core/memory/manager.js";
+import { MemorySystem } from "../core/memory/memory-service.js";
+import type { MemoryType, Memory } from "../core/memory/types.js";
 import { generateText, Output } from "ai";
 import { z } from "zod";
 import { LLMProvider } from "@server/world/providers/llm/index.js";
@@ -102,8 +103,8 @@ export async function runSleepModeIfNeeded(params: {
   }
 
   try {
-    const memoryManager = UnifiedMemoryManager.create(homedir, agentId);
-    const allMemories = memoryManager.getAllMemories();
+    const memoryManager = new MemorySystem(homedir, agentId);
+    const allMemories = memoryManager.getMemories({ format: "full" }) as Memory[];
     
     if (allMemories.length > 0) {
       const model = await LLMProvider.getInstance().fastCheap();
@@ -119,7 +120,25 @@ export async function runSleepModeIfNeeded(params: {
         temperature: 0.3,
       });
       
-      memoryManager.onSleepEnded(response.output.keepIds);
+      // Remove memories that are not in the keep list
+      const keepIds = new Set(response.output.keepIds);
+      const allMemoryTypes: MemoryType[] = [
+        "semantic",
+        "episodic",
+        "procedural",
+        "prospective",
+        "emotional",
+        "working",
+      ];
+      
+      for (const type of allMemoryTypes) {
+        const memories = memoryManager.getMemories({ type, format: "full" }) as Memory[];
+        for (const memory of memories) {
+          if (!keepIds.has(memory.id)) {
+            memoryManager.remove(type, memory.id);
+          }
+        }
+      }
     }
 
     const updatedEntry = await conversationManager.updateConversationEntry(conversationId, (current) => ({

@@ -5,11 +5,10 @@ export * from "./config.js"; // Memory search configuration
 export * from "./types.js";
 
 // Memory Stores (Data Storage)
-export * from "./stores/working-store.js";
-export * from "./stores/memory-store.js"; // Unified store for all memory types
+export * from "./memory-store.js"; // Unified store for all memory types
 
-// Memory Manager (Unified Interface)
-export * from "./manager.js"; // Unified Memory Manager
+// Memory Service (Unified Interface)
+export * from "./memory-service.js"; // Memory Service
 
 // Memory Remembering (Real-time)
 export * from "./memory-classifier.js";
@@ -30,4 +29,4 @@ export type { ResolvedMemorySearchConfig, MemorySearchConfig } from "./config.js
 
 // Function exports (matching OpenClaw pattern)
 export { getMemorySearchManager } from "./retrieval/search.js";
-export { UnifiedMemoryManager } from "./manager.js";
+export { MemorySystem } from "./memory-service.js";

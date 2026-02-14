@@ -7,7 +7,7 @@ import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { getAgentMemoryStorePath } from "@server/world/homedir/paths.js";
-import type { Memory, MemoryType } from "../types.js";
+import type { Memory, MemoryType } from "./types.js";
 
 export interface MemoryStorage {
   memories: Memory[];
@@ -27,9 +27,9 @@ export class MemoryStore {
   }
 
   /**
-   * Add memory
+   * Insert a new memory
    */
-  add(memory: Omit<Memory, "id" | "type" | "createdAt" | "updatedAt">): string {
+  insert(memory: Omit<Memory, "id" | "type" | "createdAt" | "updatedAt">): string {
     const id = randomUUID();
     const now = Date.now();
 
@@ -38,7 +38,8 @@ export class MemoryStore {
       type: this.memoryType,
       createdAt: now,
       updatedAt: now,
-      ...memory,
+      content: memory.content,
+      ...(memory.metadata && { metadata: memory.metadata }),
     };
 
     this.memories.set(id, mem);
@@ -47,16 +48,16 @@ export class MemoryStore {
   }
 
   /**
-   * Get memory by ID
+   * Find a memory by ID
    */
-  get(id: string): Memory | null {
+  find(id: string): Memory | null {
     return this.memories.get(id) ?? null;
   }
 
   /**
-   * Get all memories
+   * Find all memories
    */
-  getAll(): Memory[] {
+  findAll(): Memory[] {
     return Array.from(this.memories.values());
   }
 
@@ -64,15 +65,10 @@ export class MemoryStore {
    * Query memories
    */
   query(options?: {
-    conversationId?: string;
     types?: MemoryType[];
     limit?: number;
   }): Memory[] {
     let results = Array.from(this.memories.values());
-
-    if (options?.conversationId) {
-      results = results.filter(m => m.conversationId === options.conversationId);
-    }
 
     if (options?.types && options.types.length > 0) {
       results = results.filter(m => options.types!.includes(m.type));
@@ -88,7 +84,7 @@ export class MemoryStore {
   }
 
   /**
-   * Update memory
+   * Update a memory by ID
    */
   update(id: string, updates: Partial<Omit<Memory, "id" | "createdAt">>): boolean {
     const memory = this.memories.get(id);
@@ -108,9 +104,9 @@ export class MemoryStore {
   }
 
   /**
-   * Delete memory
+   * Remove a memory by ID
    */
-  delete(id: string): boolean {
+  remove(id: string): boolean {
     const deleted = this.memories.delete(id);
     if (deleted) {
       this.save();

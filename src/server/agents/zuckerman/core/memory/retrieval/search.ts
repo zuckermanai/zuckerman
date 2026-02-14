@@ -475,7 +475,7 @@ export async function getMemorySearchManager(params: {
   try {
     const manager = new MemorySearchManagerImpl(config, workspaceDir);
     // Initialize database once at creation time - it will be shared across all operations
-    // Database is initialized by UnifiedMemoryManager, but we ensure it's ready here
+    // Database is initialized by MemorySystem, but we ensure it's ready here
     await manager.initialize(agentId);
 
     // Auto-sync on creation if configured
