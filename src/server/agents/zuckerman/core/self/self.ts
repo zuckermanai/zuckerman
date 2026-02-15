@@ -381,25 +381,15 @@ export class Self {
         try {
           console.log(`[Self] Brain part iteration ${iterations + 1}`);
           const workingMemory = this.memoryManager.getMemories({ type: "working", format: "content" }) as string[];
-          const streamResult = await streamText({
+          const result = await generateText({
             model: this.llmModel,
             system: this.getSystemPromptWithContext(workingMemory.length),
             messages: messagesHistory,
             tools: tools,
           });
 
-          let content = "";
-          for await (const chunk of streamResult.textStream) {
-            content += chunk;
-            await this.emit({
-              type: "stream.token",
-              conversationId: "",
-              runId,
-              token: chunk,
-            });
-          }
-
-          const toolCalls = await streamResult.toolCalls;
+          const content = result.text;
+          const toolCalls = result.toolCalls;
 
           if (toolCalls?.length) {
             try {
