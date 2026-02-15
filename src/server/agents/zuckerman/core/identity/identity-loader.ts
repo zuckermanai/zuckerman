@@ -1,7 +1,7 @@
 import { readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { existsSync } from "node:fs";
-import { buildDynamicData } from "./dynamic-data.js";
+import { getSystemContext } from "./dynamic-data.js";
 
 export interface LoadedPrompts {
   files: Map<string, string>;
@@ -70,7 +70,12 @@ export class IdentityLoader {
     }
 
     // Add dynamic data at the end
-    const dynamicData = await buildDynamicData(agentDir);
+    const dynamicData = getSystemContext({
+      directories: true,
+      systemInfo: true,
+      environment: true,
+      agentDir,
+    });
     parts.push(dynamicData);
 
     return parts.join("\n\n---\n\n");

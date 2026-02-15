@@ -9,11 +9,6 @@ import { agentDiscovery } from "@server/agents/discovery.js";
 import type {
   AgentEvent,
   WriteEvent,
-  ThinkEvent,
-  RememberEvent,
-  ActEvent,
-  LearnEvent,
-  StreamTokenEvent,
   StreamLifecycleEvent,
   StreamToolCallEvent,
   StreamToolResultEvent,
@@ -61,59 +56,28 @@ export class AgentService implements AgentRuntime {
    */
   private setupEventHandlers(): void {
     this.runtime.on("write", async (event: WriteEvent) => {
-      const runId = event.runId || randomUUID();
-      // Get conversationId from event, or use main conversation if empty
       let conversationId = event.conversationId?.trim() || "";
       
       if (!conversationId) {
-        // If no conversationId provided, use main conversation
         const mainConversation = this.conversationManager.getOrCreateMainConversation(this.agentId);
         conversationId = mainConversation.id;
-        console.log(`[AgentService] Write event using main conversation: ${conversationId}`);
       }
       
-      // Ensure conversation exists
       const conversation = this.conversationManager.getConversation(conversationId);
       if (!conversation) {
-        console.warn(`[AgentService] Conversation ${conversationId} not found, skipping write event`);
         return;
       }
       
-      await this.conversationManager.addMessage(conversationId, event.role, event.content, { runId });
-      console.log(`[AgentService] Added ${event.role} message to conversation ${conversationId}`);
-    });
-
-    this.runtime.on("think", async (event: ThinkEvent) => {
-      // Think events are internal - don't add to conversation
-    });
-
-    this.runtime.on("remember", async (event: RememberEvent) => {
-      console.log(`[AgentService] Remembering: ${event.memory}`);
-      // Could store in memory system
-    });
-
-    this.runtime.on("act", async (event: ActEvent) => {
-      console.log(`[AgentService] Acting: ${event.action}`);
-    });
-
-    this.runtime.on("learn", async (event: LearnEvent) => {
-      console.log(`[AgentService] Learning: ${event.knowledge}`);
-      // Could store in memory system
+      await this.conversationManager.addMessage(conversationId, event.role, event.content, { runId: event.runId });
     });
 
     this.runtime.on("message", async (event: MessageEvent) => {
-      const runId = event.runId || randomUUID();
       await activityRecorder.recordAgentMessage(
         this.agentId,
         event.conversationId,
-        runId,
+        event.runId || randomUUID(),
         event.message
       ).catch(err => console.warn(`[AgentService] Failed to record message:`, err));
-    });
-
-    // Streaming events
-    this.runtime.on("stream.token", async (event: StreamTokenEvent) => {
-      // Handle token streaming if needed
     });
 
     this.runtime.on("stream.lifecycle", async (event: StreamLifecycleEvent) => {
@@ -221,13 +185,6 @@ export class AgentService implements AgentRuntime {
   }
 
   /**
-   * Emit an event to the runtime
-   */
-  async emit(event: AgentEvent): Promise<void> {
-    await this.runtime.emit(event);
-  }
-
-  /**
    * Initialize the agent (called once when agent is created)
    */
   async initialize(): Promise<void> {
@@ -248,15 +205,14 @@ export class AgentService implements AgentRuntime {
     }
     await this.conversationManager.addMessage(conversationId, "user", message, { runId });
     
-    // Get conversation messages
-    const conversation = this.conversationManager.getConversation(conversationId);
-    const conversationMessages = conversation?.messages || [];
-    
-    return await this.runtime.run({ 
-      ...params, 
-      runId, 
-      conversationMessages
+    await this.runtime.emit({
+      type: "message",
+      conversationId,
+      message,
+      runId,
     });
+    
+    return { runId, response: "", tokensUsed: 0 };
   }
 
   /**
