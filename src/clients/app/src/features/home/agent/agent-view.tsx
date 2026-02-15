@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
@@ -102,6 +102,7 @@ export function AgentView({ agentId, state, gatewayClient, onClose }: AgentViewP
   const [creatingMemory, setCreatingMemory] = useState<string | null>(null);
   const [newMemoryContent, setNewMemoryContent] = useState<string>("");
   const [savingMemory, setSavingMemory] = useState(false);
+  const activitiesPollingRef = useRef<NodeJS.Timeout | null>(null);
 
   const tabs = [
     { id: "activities" as AgentTab, label: "Activities", icon: <Activity className="h-4 w-4" /> },
@@ -118,11 +119,35 @@ export function AgentView({ agentId, state, gatewayClient, onClose }: AgentViewP
     }
   }, [activeTab, gatewayClient, agentId]);
 
-  // Load activities when activities tab is active
+  // Load activities when activities tab is active and set up polling
   useEffect(() => {
-    if (activeTab === "activities" && gatewayClient?.isConnected() && !loadingActivities) {
-      loadActivities();
+    // Stop any existing polling
+    if (activitiesPollingRef.current) {
+      clearInterval(activitiesPollingRef.current);
+      activitiesPollingRef.current = null;
     }
+
+    if (activeTab === "activities" && gatewayClient?.isConnected()) {
+      // Load immediately
+      if (!loadingActivities) {
+        loadActivities();
+      }
+
+      // Set up polling every 1 second
+      activitiesPollingRef.current = setInterval(() => {
+        if (gatewayClient?.isConnected() && !loadingActivities) {
+          loadActivities(true); // Pass true to indicate this is a polling refresh
+        }
+      }, 1000);
+    }
+
+    // Cleanup on unmount or when dependencies change
+    return () => {
+      if (activitiesPollingRef.current) {
+        clearInterval(activitiesPollingRef.current);
+        activitiesPollingRef.current = null;
+      }
+    };
   }, [activeTab, gatewayClient, agentId, activityDateFilter, activityTypeFilter]);
 
   // Load memories when memory tab is active
@@ -217,13 +242,16 @@ export function AgentView({ agentId, state, gatewayClient, onClose }: AgentViewP
     }
   };
 
-  const loadActivities = async () => {
+  const loadActivities = async (isPolling: boolean = false) => {
     if (!gatewayClient?.isConnected()) {
       setActivitiesError("Not connected to gateway");
       return;
     }
 
-    setLoadingActivities(true);
+    // Only show loading state on initial load, not during polling
+    if (!isPolling) {
+      setLoadingActivities(true);
+    }
     setActivitiesError(null);
 
     try {
@@ -267,21 +295,43 @@ export function AgentView({ agentId, state, gatewayClient, onClose }: AgentViewP
       const response = await gatewayClient.request("activities.list", params);
       if (response.ok && response.result) {
         const result = response.result as { activities?: ActivityItem[]; count?: number };
-        const activities = (result.activities || []).sort((a, b) => b.timestamp - a.timestamp);
-        setActivities(activities);
+        const newActivities = (result.activities || []).sort((a, b) => b.timestamp - a.timestamp);
+        
+        if (isPolling) {
+          // During polling, only add new activities that don't exist yet
+          setActivities((prevActivities) => {
+            const existingIds = new Set(prevActivities.map(a => a.id));
+            const newItems = newActivities.filter(a => !existingIds.has(a.id));
+            
+            if (newItems.length > 0) {
+              // Merge and sort by timestamp
+              const merged = [...newItems, ...prevActivities].sort((a, b) => b.timestamp - a.timestamp);
+              return merged.slice(0, 100); // Keep limit of 100
+            }
+            
+            return prevActivities;
+          });
+        } else {
+          // Initial load or manual refresh - replace everything
+          setActivities(newActivities);
+        }
         setActivitiesError(null);
       } else {
         const errorMsg = response.error?.message || "Failed to load activities";
         setActivitiesError(errorMsg);
         console.error("[AgentView] Failed to load activities:", response.error);
-        setActivities([]);
+        if (!isPolling) {
+          setActivities([]);
+        }
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Failed to load activities";
       setActivitiesError(errorMessage);
       console.error("[AgentView] Error loading activities:", error);
     } finally {
-      setLoadingActivities(false);
+      if (!isPolling) {
+        setLoadingActivities(false);
+      }
     }
   };
 
@@ -466,7 +516,7 @@ export function AgentView({ agentId, state, gatewayClient, onClose }: AgentViewP
     if (days > 0) return `${days} day${days > 1 ? "s" : ""} ago`;
     if (hours > 0) return `${hours} hour${hours > 1 ? "s" : ""} ago`;
     if (minutes > 0) return `${minutes} minute${minutes > 1 ? "s" : ""} ago`;
-    return "just now";
+    return `${seconds} sec${seconds !== 1 ? "s" : ""} ago`;
   };
 
   const formatTime = (timestamp: number): string => {
